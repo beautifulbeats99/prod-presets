@@ -20,7 +20,7 @@ interface AudioAsset {
   bpm: number | null;
   credits: number;
   baseFreq: number;
-  waveform: number[];
+  waveformBars: string;
 }
 
 interface Pack {
@@ -78,7 +78,7 @@ const INITIAL_ASSETS: AudioAsset[] = [
     bpm: 140,
     credits: 2,
     baseFreq: 110,
-    waveform: [35, 60, 85, 95, 70, 50, 90, 100, 80, 65, 45, 75, 90, 60, 40, 70, 85, 55, 35, 25],
+    waveformBars: "35,60,85,95,70,50,90,100,80,65,45,75,90,60,40,70,85,55,35,25",
   },
   {
     id: "a2",
@@ -95,7 +95,7 @@ const INITIAL_ASSETS: AudioAsset[] = [
     bpm: 95,
     credits: 2,
     baseFreq: 220,
-    waveform: [25, 40, 55, 70, 85, 95, 90, 85, 80, 75, 85, 90, 80, 70, 60, 50, 45, 35, 30, 20],
+    waveformBars: "25,40,55,70,85,95,90,85,80,75,85,90,80,70,60,50,45,35,30,20",
   },
   {
     id: "a3",
@@ -112,7 +112,7 @@ const INITIAL_ASSETS: AudioAsset[] = [
     bpm: 128,
     credits: 2,
     baseFreq: 330,
-    waveform: [90, 45, 85, 40, 95, 50, 80, 35, 90, 45, 85, 40, 75, 35, 80, 40, 65, 30, 50, 25],
+    waveformBars: "90,45,85,40,95,50,80,35,90,45,85,40,75,35,80,40,65,30,50,25",
   },
   {
     id: "a4",
@@ -129,7 +129,7 @@ const INITIAL_ASSETS: AudioAsset[] = [
     bpm: null,
     credits: 2,
     baseFreq: 261.63,
-    waveform: [20, 30, 45, 60, 75, 85, 95, 100, 95, 90, 85, 80, 75, 70, 60, 50, 40, 30, 25, 15],
+    waveformBars: "20,30,45,60,75,85,95,100,95,90,85,80,75,70,60,50,40,30,25,15",
   },
   {
     id: "a5",
@@ -146,7 +146,7 @@ const INITIAL_ASSETS: AudioAsset[] = [
     bpm: 90,
     credits: 2,
     baseFreq: 164.81,
-    waveform: [95, 40, 75, 30, 90, 45, 85, 35, 95, 40, 80, 30, 90, 45, 75, 35, 85, 40, 60, 25],
+    waveformBars: "95,40,75,30,90,45,85,35,95,40,80,30,90,45,75,35,85,40,60,25",
   },
   {
     id: "a6",
@@ -163,7 +163,7 @@ const INITIAL_ASSETS: AudioAsset[] = [
     bpm: 87,
     credits: 2,
     baseFreq: 220,
-    waveform: [75, 85, 70, 60, 80, 90, 75, 65, 85, 80, 70, 60, 75, 85, 70, 55, 45, 35, 25, 20],
+    waveformBars: "75,85,70,60,80,90,75,65,85,80,70,60,75,85,70,55,45,35,25,20",
   },
 ];
 
@@ -245,7 +245,7 @@ function RotaryKnob({
       <div
         onMouseDown={handleMouseDown}
         title="Click and drag up or down to adjust"
-        className={`relative w-12 h-12 rounded-full flex items-center justify-center cursor-ns-resize transition-shadow ${
+        className={`relative w-9 h-9 rounded-full flex items-center justify-center cursor-ns-resize transition-shadow ${
           darkMode
             ? "bg-zinc-900 border border-zinc-700 shadow-inner hover:border-blue-500"
             : "bg-white border border-slate-200 shadow-sm hover:border-blue-500"
@@ -258,7 +258,7 @@ function RotaryKnob({
             r="20"
             fill="none"
             stroke={darkMode ? "#27272a" : "#e2e8f0"}
-            strokeWidth="3"
+            strokeWidth="3.5"
           />
           <circle
             cx="24"
@@ -266,7 +266,7 @@ function RotaryKnob({
             r="20"
             fill="none"
             stroke="#2563eb"
-            strokeWidth="3"
+            strokeWidth="3.5"
             strokeDasharray={`${(value / 100) * 94} 126`}
             strokeLinecap="round"
           />
@@ -274,23 +274,24 @@ function RotaryKnob({
 
         <div
           style={{ transform: `rotate(${angle}deg)` }}
-          className={`w-8 h-8 rounded-full flex items-start justify-center pt-1 transition-transform duration-75 ${
+          className={`w-6 h-6 rounded-full flex items-start justify-center pt-0.5 transition-transform duration-75 ${
             darkMode ? "bg-zinc-800 border border-zinc-700" : "bg-slate-50 border border-slate-200"
           }`}
         >
-          <div className="w-1 h-2.5 rounded-full bg-blue-600" />
+          <div className="w-0.5 h-2 rounded-full bg-blue-600" />
         </div>
       </div>
-      <span className={`mt-1.5 text-[11px] font-medium ${darkMode ? "text-zinc-300" : "text-slate-700"}`}>
+      <span className={`mt-1 text-[10px] font-medium leading-none ${darkMode ? "text-zinc-300" : "text-slate-700"}`}>
         {label}
       </span>
-      <span className="text-[10px] font-mono text-blue-600 font-semibold">{value}%</span>
+      <span className="text-[9px] font-mono text-blue-500 font-semibold leading-tight">{value}%</span>
     </div>
   );
 }
 
 export default function ProdPresetsMarketplace() {
-  const [darkMode, setDarkMode] = useState(false);
+  // Default to Dark Mode
+  const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("Presets");
   const [selectedPack, setSelectedPack] = useState<Pack | null>(null);
 
@@ -299,17 +300,23 @@ export default function ProdPresetsMarketplace() {
   const [selectedKey, setSelectedKey] = useState<string>("All");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
+  // Credits & Payments
   const [credits, setCredits] = useState<number>(100);
   const [ownedIds, setOwnedIds] = useState<string[]>(["a2"]);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("Card");
+  const [selectedBundleCredits, setSelectedBundleCredits] = useState<number>(100);
   const [creditHistory, setCreditHistory] = useState<{ label: string; delta: number; date: string }[]>([
     { label: "Pro Creator Monthly Top-Up", delta: 100, date: "Today" },
     { label: "Unlocked PP_Velvet_Juno_Pad_Lush.labx", delta: -2, date: "Today" },
   ]);
 
+  // Synth Deck & Polyphonic Multi-Key State
   const [activeAsset, setActiveAsset] = useState<AudioAsset>(INITIAL_ASSETS[0]);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-  const [activeNote, setActiveNote] = useState<string | null>(null);
+  const [activeNotes, setActiveNotes] = useState<string[]>([]);
+  const [dockMinimized, setDockMinimized] = useState(false);
 
   const [cutoff, setCutoff] = useState(72);
   const [resonance, setResonance] = useState(30);
@@ -365,7 +372,7 @@ export default function ProdPresetsMarketplace() {
         const release = durationSec + (spaceMix / 100) * 0.9;
 
         gain.gain.setValueAtTime(0.001, now);
-        gain.gain.linearRampToValueAtTime(0.22, now + attack);
+        gain.gain.linearRampToValueAtTime(0.2, now + attack);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + release);
 
         osc1.connect(filter);
@@ -384,24 +391,44 @@ export default function ProdPresetsMarketplace() {
     [activeAsset.engine, cutoff, envelope, macro1, resonance, spaceMix]
   );
 
+  // Polyphonic Computer Keyboard Support (Multiple keys stay lit while held)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       const found = PIANO_NOTES.find((k) => k.keyBind === e.key.toLowerCase());
       if (found && !e.repeat) {
-        setActiveNote(found.note);
-        triggerSynthNote(found.freq, 0.55);
+        setActiveNotes((prev) => (prev.includes(found.note) ? prev : [...prev, found.note]));
+        triggerSynthNote(found.freq, 0.65);
       }
     };
-    const handleKeyUp = () => setActiveNote(null);
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      const found = PIANO_NOTES.find((k) => k.keyBind === e.key.toLowerCase());
+      if (found) {
+        setActiveNotes((prev) => prev.filter((n) => n !== found.note));
+      }
+    };
+
+    const handleWindowBlur = () => setActiveNotes([]);
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
     };
   }, [triggerSynthNote]);
+
+  const handlePressNote = (noteName: string, freq: number) => {
+    setActiveNotes((prev) => (prev.includes(noteName) ? prev : [...prev, noteName]));
+    triggerSynthNote(freq, 0.65);
+  };
+
+  const handleReleaseNote = (noteName: string) => {
+    setActiveNotes((prev) => prev.filter((n) => n !== noteName));
+  };
 
   const handleTogglePlay = (asset: AudioAsset) => {
     if (activeAsset.id === asset.id && isPlayingPreview) {
@@ -422,7 +449,7 @@ export default function ProdPresetsMarketplace() {
       return;
     }
     if (credits < asset.credits) {
-      alert("Not enough credits! Top up your subscription in Account Settings.");
+      setPaymentModalOpen(true);
       return;
     }
     setCredits((c) => c - asset.credits);
@@ -431,6 +458,19 @@ export default function ProdPresetsMarketplace() {
       { label: `Unlocked ${asset.filename}`, delta: -asset.credits, date: "Just now" },
       ...prev,
     ]);
+  };
+
+  const handleCompletePayment = () => {
+    setCredits((c) => c + selectedBundleCredits);
+    setCreditHistory((prev) => [
+      {
+        label: `Added ${selectedBundleCredits} Credits via ${selectedPaymentMethod}`,
+        delta: selectedBundleCredits,
+        date: "Just now",
+      },
+      ...prev,
+    ]);
+    setPaymentModalOpen(false);
   };
 
   const filteredAssets = INITIAL_ASSETS.filter((item) => {
@@ -453,7 +493,7 @@ export default function ProdPresetsMarketplace() {
 
   return (
     <div
-      className={`min-h-screen transition-colors duration-200 ${
+      className={`min-h-screen pb-44 transition-colors duration-200 ${
         darkMode ? "bg-[#0e0f12] text-zinc-100" : "bg-white text-slate-900"
       }`}
     >
@@ -463,20 +503,20 @@ export default function ProdPresetsMarketplace() {
           darkMode ? "bg-[#0e0f12]/90 border-zinc-800" : "bg-white/95 border-slate-200"
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6">
             <div
               onClick={() => {
                 setSelectedPack(null);
                 setActiveTab("Presets");
               }}
-              className="flex items-center gap-2.5 cursor-pointer"
+              className="flex items-center gap-2 cursor-pointer"
             >
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-600/30 font-bold text-sm">
+              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-600/30 font-bold text-xs">
                 PP
               </div>
-              <span className="font-bold text-lg tracking-tight">
-                Prod<span className="text-blue-600">Presets</span>
+              <span className="font-bold text-base sm:text-lg tracking-tight">
+                Prod<span className="text-blue-500">Presets</span>
                 <span className="text-xs font-normal opacity-60">.com</span>
               </span>
             </div>
@@ -516,18 +556,25 @@ export default function ProdPresetsMarketplace() {
             </nav>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <div
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 border ${
+          <div className="flex items-center gap-2">
+            {/* Credit Wallet + Quick Buy Button */}
+            <button
+              onClick={() => setPaymentModalOpen(true)}
+              title="Click to add credits or manage payment methods"
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 border transition-colors ${
                 darkMode
-                  ? "bg-blue-950/50 border-blue-800/60 text-blue-400"
-                  : "bg-blue-50 border-blue-200 text-blue-700"
+                  ? "bg-blue-950/60 border-blue-800/70 text-blue-400 hover:border-blue-500"
+                  : "bg-blue-50 border-blue-200 text-blue-700 hover:border-blue-400"
               }`}
             >
-              <span className="text-blue-600">✦</span>
-              <span>{credits} Credits</span>
-            </div>
+              <span className="text-blue-500">✦</span>
+              <span>{credits} CR</span>
+              <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px]">
+                + Buy
+              </span>
+            </button>
 
+            {/* Dark / Light Theme Switcher */}
             <button
               onClick={() => setDarkMode(!darkMode)}
               aria-label="Toggle studio theme"
@@ -537,18 +584,19 @@ export default function ProdPresetsMarketplace() {
                   : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
               }`}
             >
-              {darkMode ? "Light" : "Dark"}
+              {darkMode ? "☀ Light" : "☾ Dark"}
             </button>
 
+            {/* Account Button */}
             <button
               onClick={() => setAccountOpen(true)}
-              className={`flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full border text-xs font-medium transition-colors ${
+              className={`flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
                 darkMode
                   ? "border-zinc-800 bg-zinc-900 hover:border-blue-500"
                   : "border-slate-200 bg-white hover:border-blue-500 shadow-sm"
               }`}
             >
-              <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
+              <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
                 P
               </div>
               <span className="hidden sm:inline">Account</span>
@@ -557,151 +605,35 @@ export default function ProdPresetsMarketplace() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* TOP INTERACTIVE SYNTH DECK */}
-        <section
-          className={`rounded-2xl border p-5 transition-colors ${
-            darkMode
-              ? "bg-zinc-900/70 border-zinc-800 shadow-lg"
-              : "bg-slate-50/80 border-slate-200/90 shadow-sm"
-          }`}
-        >
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="space-y-1.5 min-w-[240px]">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-blue-600 text-white">
-                  {activeAsset.engine}
-                </span>
-                <span className={`text-xs font-mono ${darkMode ? "text-zinc-400" : "text-slate-500"}`}>
-                  {activeAsset.extension}
-                </span>
-              </div>
-              <h2 className="text-base font-bold truncate max-w-[280px]">{activeAsset.filename}</h2>
-              <p className={`text-xs ${darkMode ? "text-zinc-400" : "text-slate-500"}`}>
-                Tweak macros below & play keys (A–L) to audition live
-              </p>
-              <div className="pt-1 flex items-center gap-2">
-                <button
-                  onClick={() => handleTogglePlay(activeAsset)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
-                >
-                  ▶ Audition Patch
-                </button>
-                <button
-                  onClick={resetKnobs}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                    darkMode
-                      ? "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  ↺ Reset
-                </button>
-              </div>
-            </div>
-
-            {/* 5 Rotary Knobs */}
-            <div
-              className={`flex flex-wrap items-center justify-center gap-5 sm:gap-7 px-5 py-3.5 rounded-xl border ${
-                darkMode ? "bg-zinc-950/60 border-zinc-800" : "bg-white border-slate-200"
-              }`}
-            >
-              <RotaryKnob label="Cutoff" value={cutoff} onChange={setCutoff} darkMode={darkMode} />
-              <RotaryKnob label="Resonance" value={resonance} onChange={setResonance} darkMode={darkMode} />
-              <RotaryKnob label="Envelope" value={envelope} onChange={setEnvelope} darkMode={darkMode} />
-              <RotaryKnob label="Space FX" value={spaceMix} onChange={setSpaceMix} darkMode={darkMode} />
-              <RotaryKnob label="Macro 1" value={macro1} onChange={setMacro1} darkMode={darkMode} />
-            </div>
-          </div>
-
-          {/* 2-OCTAVE MINI PIANO */}
-          <div className="mt-5 pt-4 border-t border-slate-200/60 dark:border-zinc-800">
-            <div className="relative h-24 w-full overflow-x-auto select-none flex justify-center">
-              <div className="relative flex h-full min-w-[540px] max-w-3xl w-full">
-                {PIANO_NOTES.filter((n) => !n.isBlack).map((k) => {
-                  const isPressed = activeNote === k.note;
-                  return (
-                    <button
-                      key={k.note}
-                      onMouseDown={() => {
-                        setActiveNote(k.note);
-                        triggerSynthNote(k.freq, 0.55);
-                      }}
-                      onMouseUp={() => setActiveNote(null)}
-                      onMouseLeave={() => setActiveNote(null)}
-                      className={`flex-1 h-full border rounded-b-lg flex flex-col justify-end items-center pb-2 transition-all ${
-                        isPressed
-                          ? "bg-blue-600 text-white border-blue-600 translate-y-0.5"
-                          : darkMode
-                          ? "bg-zinc-100 text-zinc-800 border-zinc-400 hover:bg-blue-50"
-                          : "bg-white text-slate-500 border-slate-300 hover:bg-blue-50/70 shadow-sm"
-                      }`}
-                    >
-                      <span className="text-[10px] font-mono uppercase opacity-70">{k.keyBind}</span>
-                    </button>
-                  );
-                })}
-
-                <div className="pointer-events-none absolute inset-0 flex">
-                  {PIANO_NOTES.map((k, idx) => {
-                    if (!k.isBlack) return null;
-                    const whiteKeysBefore = PIANO_NOTES.slice(0, idx).filter((n) => !n.isBlack).length;
-                    const leftPercent = (whiteKeysBefore / 10) * 100 - 3;
-                    const isPressed = activeNote === k.note;
-                    return (
-                      <button
-                        key={k.note}
-                        style={{ left: `${leftPercent}%` }}
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          setActiveNote(k.note);
-                          triggerSynthNote(k.freq, 0.55);
-                        }}
-                        onMouseUp={() => setActiveNote(null)}
-                        onMouseLeave={() => setActiveNote(null)}
-                        className={`pointer-events-auto absolute top-0 w-[6%] h-[58%] rounded-b-md z-10 flex flex-col justify-end items-center pb-1.5 text-[9px] font-mono uppercase transition-all ${
-                          isPressed
-                            ? "bg-blue-500 text-white translate-y-0.5"
-                            : "bg-slate-900 text-slate-400 hover:bg-slate-800 shadow-md"
-                        }`}
-                      >
-                        {k.keyBind}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
+      {/* MAIN CATALOG AREA (MAXIMIZED SPACE FOR PRESETS & SAMPLES) */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 space-y-4">
         {/* PACK DETAIL BANNER */}
         {selectedPack && (
           <section
-            className={`rounded-2xl border p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 ${
+            className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 ${
               darkMode ? "bg-zinc-900 border-zinc-800" : "bg-blue-50/50 border-blue-100"
             }`}
           >
-            <div className="flex items-center gap-5">
+            <div className="flex items-center gap-4">
               <div
-                className={`w-24 h-24 rounded-xl bg-gradient-to-br ${selectedPack.coverGradient} flex items-center justify-center text-white shadow-md shrink-0 font-bold text-xl`}
+                className={`w-20 h-20 rounded-xl bg-gradient-to-br ${selectedPack.coverGradient} flex items-center justify-center text-white shadow-md shrink-0 font-bold text-lg`}
               >
                 PACK
               </div>
               <div className="space-y-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-500">
                   {selectedPack.genre}
                 </span>
-                <h1 className="text-2xl font-bold">{selectedPack.title}</h1>
-                <p className={`text-sm max-w-xl ${darkMode ? "text-zinc-400" : "text-slate-600"}`}>
+                <h1 className="text-xl font-bold">{selectedPack.title}</h1>
+                <p className={`text-xs max-w-xl ${darkMode ? "text-zinc-400" : "text-slate-600"}`}>
                   {selectedPack.description}
                 </p>
-                <p className="text-xs font-medium text-blue-600 pt-1">By {selectedPack.creator}</p>
+                <p className="text-xs font-medium text-blue-500 pt-0.5">By {selectedPack.creator}</p>
               </div>
             </div>
             <button
               onClick={() => setSelectedPack(null)}
-              className={`px-3.5 py-2 rounded-lg border text-xs font-semibold ${
+              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
                 darkMode
                   ? "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
                   : "border-slate-200 bg-white hover:bg-slate-50"
@@ -714,7 +646,7 @@ export default function ProdPresetsMarketplace() {
 
         {/* PACKS GRID VIEW */}
         {activeTab === "Packs" && !selectedPack ? (
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {PACKS.map((pack) => (
               <div
                 key={pack.id}
@@ -726,7 +658,7 @@ export default function ProdPresetsMarketplace() {
                 }`}
               >
                 <div
-                  className={`aspect-square w-full rounded-xl bg-gradient-to-br ${pack.coverGradient} mb-4 flex items-center justify-center text-white relative overflow-hidden`}
+                  className={`aspect-square w-full rounded-xl bg-gradient-to-br ${pack.coverGradient} mb-3.5 flex items-center justify-center text-white relative overflow-hidden`}
                 >
                   <span className="text-3xl font-extrabold tracking-tight opacity-85 group-hover:scale-110 transition-transform">
                     PP
@@ -735,7 +667,7 @@ export default function ProdPresetsMarketplace() {
                     {pack.genre}
                   </span>
                 </div>
-                <h3 className="font-bold text-base group-hover:text-blue-600 transition-colors">
+                <h3 className="font-bold text-base group-hover:text-blue-500 transition-colors">
                   {pack.title}
                 </h3>
                 <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? "text-zinc-400" : "text-slate-500"}`}>
@@ -747,13 +679,13 @@ export default function ProdPresetsMarketplace() {
         ) : (
           <>
             {/* FILTER BAR */}
-            <section className="space-y-3">
+            <section className="space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                   <select
                     value={selectedEngine}
                     onChange={(e) => setSelectedEngine(e.target.value as SynthEngine)}
-                    className={`px-3 py-2 rounded-lg border text-xs font-semibold outline-none focus:border-blue-600 ${
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold outline-none focus:border-blue-600 ${
                       darkMode
                         ? "bg-zinc-900 border-zinc-800 text-zinc-200"
                         : "bg-white border-slate-200 text-slate-700"
@@ -770,7 +702,7 @@ export default function ProdPresetsMarketplace() {
                   <select
                     value={selectedKey}
                     onChange={(e) => setSelectedKey(e.target.value)}
-                    className={`px-3 py-2 rounded-lg border text-xs font-semibold outline-none focus:border-blue-600 ${
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold outline-none focus:border-blue-600 ${
                       darkMode
                         ? "bg-zinc-900 border-zinc-800 text-zinc-200"
                         : "bg-white border-slate-200 text-slate-700"
@@ -791,7 +723,7 @@ export default function ProdPresetsMarketplace() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search filenames, synths, tags..."
-                    className={`w-full px-3.5 py-2 rounded-lg border text-xs outline-none focus:border-blue-600 ${
+                    className={`w-full px-3.5 py-1.5 rounded-lg border text-xs outline-none focus:border-blue-600 ${
                       darkMode
                         ? "bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
                         : "bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
@@ -807,7 +739,7 @@ export default function ProdPresetsMarketplace() {
                     <button
                       key={tag}
                       onClick={() => setSelectedTag(active ? null : tag)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                         active
                           ? "bg-blue-600 text-white"
                           : darkMode
@@ -838,14 +770,14 @@ export default function ProdPresetsMarketplace() {
                           : "border-slate-200 text-slate-400 bg-slate-50"
                       }`}
                     >
-                      <th className="py-3 pl-4 pr-2 w-14">Pack</th>
-                      <th className="py-3 px-2 w-10"></th>
-                      <th className="py-3 px-3">Filename</th>
-                      <th className="py-3 px-3 hidden md:table-cell">Waveform</th>
-                      <th className="py-3 px-3">Time</th>
-                      <th className="py-3 px-3">Key</th>
-                      <th className="py-3 px-3">BPM</th>
-                      <th className="py-3 pl-3 pr-4 text-right">Action</th>
+                      <th className="py-2.5 pl-4 pr-2 w-14">Pack</th>
+                      <th className="py-2.5 px-2 w-10"></th>
+                      <th className="py-2.5 px-3">Filename</th>
+                      <th className="py-2.5 px-3 hidden md:table-cell">Waveform</th>
+                      <th className="py-2.5 px-3">Time</th>
+                      <th className="py-2.5 px-3">Key</th>
+                      <th className="py-2.5 px-3">BPM</th>
+                      <th className="py-2.5 pl-3 pr-4 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80 text-sm">
@@ -853,6 +785,7 @@ export default function ProdPresetsMarketplace() {
                       const isCurrent = activeAsset.id === item.id;
                       const isRowPlaying = isCurrent && isPlayingPreview;
                       const isOwned = ownedIds.includes(item.id);
+                      const bars = item.waveformBars.split(",").map(Number);
 
                       return (
                         <tr
@@ -861,14 +794,14 @@ export default function ProdPresetsMarketplace() {
                           className={`group transition-colors cursor-pointer ${
                             isCurrent
                               ? darkMode
-                                ? "bg-blue-950/25"
-                                : "bg-blue-50/60"
+                                ? "bg-blue-950/30"
+                                : "bg-blue-50/70"
                               : darkMode
                               ? "hover:bg-zinc-800/40"
                               : "hover:bg-slate-50"
                           }`}
                         >
-                          <td className="py-2.5 pl-4 pr-2">
+                          <td className="py-2 pl-4 pr-2">
                             <div
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -876,13 +809,13 @@ export default function ProdPresetsMarketplace() {
                                 if (foundPack) setSelectedPack(foundPack);
                               }}
                               title={`View pack: ${item.packTitle}`}
-                              className={`w-10 h-10 rounded-md bg-gradient-to-br ${item.coverGradient} flex items-center justify-center text-white text-[10px] font-bold shadow-sm hover:scale-105 transition-transform`}
+                              className={`w-9 h-9 rounded-md bg-gradient-to-br ${item.coverGradient} flex items-center justify-center text-white text-[10px] font-bold shadow-sm hover:scale-105 transition-transform`}
                             >
                               PP
                             </div>
                           </td>
 
-                          <td className="py-2.5 px-2">
+                          <td className="py-2 px-2">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -900,9 +833,9 @@ export default function ProdPresetsMarketplace() {
                             </button>
                           </td>
 
-                          <td className="py-2.5 px-3">
+                          <td className="py-2 px-3">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-[13px] group-hover:text-blue-600 transition-colors">
+                              <span className="font-semibold text-[13px] group-hover:text-blue-500 transition-colors">
                                 {item.filename}
                               </span>
                               <span
@@ -911,13 +844,13 @@ export default function ProdPresetsMarketplace() {
                                     ? darkMode
                                       ? "bg-zinc-800 text-zinc-300"
                                       : "bg-slate-200 text-slate-700"
-                                    : "bg-blue-600/15 text-blue-600"
+                                    : "bg-blue-600/20 text-blue-400"
                                 }`}
                               >
                                 {item.engine}
                               </span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                               {item.tags.map((t) => (
                                 <span
                                   key={t}
@@ -931,9 +864,9 @@ export default function ProdPresetsMarketplace() {
                             </div>
                           </td>
 
-                          <td className="py-2.5 px-3 hidden md:table-cell">
-                            <div className="flex items-center gap-[2px] h-7 w-36">
-                              {item.waveform.map((height, idx) => (
+                          <td className="py-2 px-3 hidden md:table-cell">
+                            <div className="flex items-center gap-[2px] h-6 w-36">
+                              {bars.map((height, idx) => (
                                 <div
                                   key={idx}
                                   style={{ height: `${height}%` }}
@@ -941,7 +874,7 @@ export default function ProdPresetsMarketplace() {
                                     isRowPlaying
                                       ? "bg-blue-500 animate-pulse"
                                       : isCurrent
-                                      ? "bg-blue-600"
+                                      ? "bg-blue-500"
                                       : darkMode
                                       ? "bg-zinc-700 group-hover:bg-zinc-500"
                                       : "bg-slate-300 group-hover:bg-blue-400"
@@ -951,13 +884,13 @@ export default function ProdPresetsMarketplace() {
                             </div>
                           </td>
 
-                          <td className="py-2.5 px-3 text-xs font-mono opacity-75">{item.duration}</td>
-                          <td className="py-2.5 px-3 text-xs font-medium opacity-80">{item.musicalKey}</td>
-                          <td className="py-2.5 px-3 text-xs font-mono opacity-75">
+                          <td className="py-2 px-3 text-xs font-mono opacity-75">{item.duration}</td>
+                          <td className="py-2 px-3 text-xs font-medium opacity-80">{item.musicalKey}</td>
+                          <td className="py-2 px-3 text-xs font-mono opacity-75">
                             {item.bpm ?? "--"}
                           </td>
 
-                          <td className="py-2.5 pl-3 pr-4 text-right">
+                          <td className="py-2 pl-3 pr-4 text-right">
                             <div className="inline-flex items-center gap-2">
                               {activeTab === "My Library" && (
                                 <button
@@ -968,7 +901,7 @@ export default function ProdPresetsMarketplace() {
                                     );
                                   }}
                                   title="Download Commercial License PDF"
-                                  className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium ${
+                                  className={`px-2 py-1 rounded-lg border text-[11px] font-medium ${
                                     darkMode
                                       ? "border-zinc-700 text-zinc-300 hover:border-blue-500"
                                       : "border-slate-200 text-slate-600 hover:border-blue-500"
@@ -983,7 +916,7 @@ export default function ProdPresetsMarketplace() {
                                   e.stopPropagation();
                                   handleUnlockAsset(item);
                                 }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
                                   isOwned
                                     ? darkMode
                                       ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/60"
@@ -1012,9 +945,229 @@ export default function ProdPresetsMarketplace() {
         )}
       </main>
 
+      {/* COMPACT BOTTOM DOCKED SYNTH DECK (FX KNOBS + POLYPHONIC MINI PIANO) */}
+      <footer
+        className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-xl transition-colors ${
+          darkMode
+            ? "bg-[#12141a]/95 border-zinc-800 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]"
+            : "bg-white/95 border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.06)]"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
+            {/* Left: Active Patch & Audition Controls */}
+            <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[230px]">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white">
+                    {activeAsset.engine}
+                  </span>
+                  <span className="text-[11px] font-mono opacity-60">{activeAsset.extension}</span>
+                </div>
+                <div className="text-xs font-bold truncate max-w-[210px] mt-0.5">
+                  {activeAsset.filename}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => handleTogglePlay(activeAsset)}
+                  className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold transition-colors"
+                >
+                  ▶ Play
+                </button>
+                <button
+                  onClick={resetKnobs}
+                  title="Reset FX Knobs"
+                  className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition-colors ${
+                    darkMode
+                      ? "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  ↺
+                </button>
+                <button
+                  onClick={() => setDockMinimized(!dockMinimized)}
+                  className={`lg:hidden px-2 py-1.5 rounded-lg border text-[11px] font-medium ${
+                    darkMode ? "border-zinc-700 text-zinc-300" : "border-slate-200 text-slate-600"
+                  }`}
+                >
+                  {dockMinimized ? "Show Synth" : "Hide"}
+                </button>
+              </div>
+            </div>
+
+            {!dockMinimized && (
+              <>
+                {/* Middle: Compact 5 FX Rotary Knobs */}
+                <div
+                  className={`flex items-center justify-center gap-3.5 sm:gap-4 px-3.5 py-1.5 rounded-xl border ${
+                    darkMode ? "bg-zinc-950/70 border-zinc-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                >
+                  <RotaryKnob label="Cutoff" value={cutoff} onChange={setCutoff} darkMode={darkMode} />
+                  <RotaryKnob label="Res" value={resonance} onChange={setResonance} darkMode={darkMode} />
+                  <RotaryKnob label="Env" value={envelope} onChange={setEnvelope} darkMode={darkMode} />
+                  <RotaryKnob label="Space" value={spaceMix} onChange={setSpaceMix} darkMode={darkMode} />
+                  <RotaryKnob label="Macro" value={macro1} onChange={setMacro1} darkMode={darkMode} />
+                </div>
+
+                {/* Right: Compact Polyphonic 2-Octave Mini Piano (Multiple keys stay lit!) */}
+                <div className="w-full lg:w-[420px] xl:w-[470px] overflow-x-auto select-none">
+                  <div className="relative h-14 min-w-[380px] w-full flex">
+                    {PIANO_NOTES.filter((n) => !n.isBlack).map((k) => {
+                      const isPressed = activeNotes.includes(k.note);
+                      return (
+                        <button
+                          key={k.note}
+                          onMouseDown={() => handlePressNote(k.note, k.freq)}
+                          onMouseUp={() => handleReleaseNote(k.note)}
+                          onMouseLeave={() => handleReleaseNote(k.note)}
+                          className={`flex-1 h-full border rounded-b-md flex flex-col justify-end items-center pb-1 transition-all ${
+                            isPressed
+                              ? "bg-blue-600 text-white border-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.75)] translate-y-0.5"
+                              : darkMode
+                              ? "bg-zinc-100 text-zinc-800 border-zinc-400 hover:bg-blue-50"
+                              : "bg-white text-slate-500 border-slate-300 hover:bg-blue-50/70"
+                          }`}
+                        >
+                          <span className="text-[9px] font-mono uppercase opacity-75">{k.keyBind}</span>
+                        </button>
+                      );
+                    })}
+
+                    <div className="pointer-events-none absolute inset-0 flex">
+                      {PIANO_NOTES.map((k, idx) => {
+                        if (!k.isBlack) return null;
+                        const whiteKeysBefore = PIANO_NOTES.slice(0, idx).filter((n) => !n.isBlack).length;
+                        const leftPercent = (whiteKeysBefore / 10) * 100 - 3;
+                        const isPressed = activeNotes.includes(k.note);
+                        return (
+                          <button
+                            key={k.note}
+                            style={{ left: `${leftPercent}%` }}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handlePressNote(k.note, k.freq);
+                            }}
+                            onMouseUp={() => handleReleaseNote(k.note)}
+                            onMouseLeave={() => handleReleaseNote(k.note)}
+                            className={`pointer-events-auto absolute top-0 w-[6%] h-[58%] rounded-b z-10 flex flex-col justify-end items-center pb-0.5 text-[8px] font-mono uppercase transition-all ${
+                              isPressed
+                                ? "bg-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.9)] translate-y-0.5"
+                                : "bg-slate-900 text-slate-400 hover:bg-slate-800 shadow"
+                            }`}
+                          >
+                            {k.keyBind}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </footer>
+
+      {/* MULTI-PAYMENT CHECKOUT MODAL (CARD, APPLE PAY, GOOGLE PAY, PAYPAL, CRYPTO) */}
+      {paymentModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div
+            className={`w-full max-w-md rounded-2xl border p-6 space-y-5 shadow-2xl ${
+              darkMode ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-900"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold">Top Up ProdPresets Credits</h3>
+                <p className="text-xs opacity-60">Instant delivery • Credits never expire</p>
+              </div>
+              <button
+                onClick={() => setPaymentModalOpen(false)}
+                className="px-2.5 py-1 rounded-lg hover:bg-zinc-800/40 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Credit Bundle Selector */}
+            <div className="grid grid-cols-3 gap-2.5">
+              {[
+                { cr: 50, price: "$9.99", tag: "Starter" },
+                { cr: 100, price: "$17.99", tag: "Most Popular" },
+                { cr: 250, price: "$39.99", tag: "Studio Pro" },
+              ].map((tier) => {
+                const selected = selectedBundleCredits === tier.cr;
+                return (
+                  <button
+                    key={tier.cr}
+                    onClick={() => setSelectedBundleCredits(tier.cr)}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      selected
+                        ? "border-blue-600 bg-blue-600/10 ring-1 ring-blue-600"
+                        : darkMode
+                        ? "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                        : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="text-[10px] font-bold uppercase text-blue-500">{tier.tag}</div>
+                    <div className="text-base font-extrabold mt-0.5">{tier.cr} CR</div>
+                    <div className="text-xs opacity-75 font-medium">{tier.price}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Payment Method Options */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold uppercase tracking-wider opacity-60 block">
+                Select Payment Method
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: "Card", label: "💳 Credit / Debit Card" },
+                  { id: "Apple Pay", label: " Apple Pay" },
+                  { id: "Google Pay", label: "G Pay / Link" },
+                  { id: "PayPal", label: "🅿 PayPal" },
+                  { id: "Klarna / Afterpay", label: "Split Pay (4x)" },
+                  { id: "USDC / Crypto", label: "◈ USDC / Crypto" },
+                ].map((method) => {
+                  const active = selectedPaymentMethod === method.id;
+                  return (
+                    <button
+                      key={method.id}
+                      onClick={() => setSelectedPaymentMethod(method.id)}
+                      className={`px-3 py-2.5 rounded-xl border text-xs font-semibold text-left transition-colors ${
+                        active
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : darkMode
+                          ? "border-zinc-800 bg-zinc-950/60 text-zinc-300 hover:border-zinc-700"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {method.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              onClick={handleCompletePayment}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors"
+            >
+              Pay with {selectedPaymentMethod} • Add {selectedBundleCredits} Credits
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* USER ACCOUNT DRAWER */}
       {accountOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex justify-end">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end">
           <div
             className={`w-full max-w-md h-full p-6 flex flex-col justify-between overflow-y-auto ${
               darkMode ? "bg-zinc-900 text-zinc-100" : "bg-white text-slate-900"
@@ -1047,15 +1200,12 @@ export default function ProdPresetsMarketplace() {
                 <div className="pt-2 flex gap-2">
                   <button
                     onClick={() => {
-                      setCredits((c) => c + 50);
-                      setCreditHistory((prev) => [
-                        { label: "Instant Top-Up (+50 Credits)", delta: 50, date: "Just now" },
-                        ...prev,
-                      ]);
+                      setAccountOpen(false);
+                      setPaymentModalOpen(true);
                     }}
                     className="px-3 py-1.5 rounded-lg bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 transition-colors"
                   >
-                    + Add 50 Credits
+                    + Buy More Credits
                   </button>
                   <button
                     onClick={() => {
@@ -1087,7 +1237,7 @@ export default function ProdPresetsMarketplace() {
                       </div>
                       <span
                         className={`font-mono font-bold ${
-                          entry.delta > 0 ? "text-emerald-500" : "text-blue-600"
+                          entry.delta > 0 ? "text-emerald-500" : "text-blue-500"
                         }`}
                       >
                         {entry.delta > 0 ? `+${entry.delta}` : entry.delta} CR
