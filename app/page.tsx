@@ -10,6 +10,7 @@ type SynthEngine = "All" | "Analog Lab" | "Serum" | "Vital" | "Omnisphere" | "WA
 interface AudioAsset {
   id: string;
   filename: string;
+  storagePath?: string;
   packId: string;
   packTitle: string;
   coverGradient: string;
@@ -34,7 +35,7 @@ interface Pack {
   genre: string;
 }
 
-const PACKS: Pack[] = [
+const FALLBACK_PACKS: Pack[] = [
   {
     id: "p1",
     title: "Midnight Serum & Analog Vol. 1",
@@ -64,7 +65,7 @@ const PACKS: Pack[] = [
   },
 ];
 
-const INITIAL_ASSETS: AudioAsset[] = [
+const FALLBACK_ASSETS: AudioAsset[] = [
   {
     id: "a1",
     filename: "PP_Midnight_Warm_Sub_Bass.fxp",
@@ -170,18 +171,18 @@ const INITIAL_ASSETS: AudioAsset[] = [
 ];
 
 const QUICK_TAGS = [
+  "edm",
+  "blissful",
   "bass",
   "pad",
   "chords",
   "pluck",
+  "lead",
   "drums",
   "keys",
   "trap",
   "rnb",
-  "hip hop",
-  "lo-fi hip hop",
   "ambient",
-  "analog",
 ];
 
 const PIANO_NOTES = [
@@ -298,6 +299,9 @@ export default function ProdPresetsMarketplace() {
   const [activeTab, setActiveTab] = useState<TabType>("Presets");
   const [selectedPack, setSelectedPack] = useState<Pack | null>(null);
 
+  const [packs, setPacks] = useState<Pack[]>(FALLBACK_PACKS);
+  const [assets, setAssets] = useState<AudioAsset[]>(FALLBACK_ASSETS);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEngine, setSelectedEngine] = useState<SynthEngine>("All");
   const [selectedKey, setSelectedKey] = useState<string>("All");
@@ -325,7 +329,7 @@ export default function ProdPresetsMarketplace() {
   const [creditHistory, setCreditHistory] = useState<{ label: string; delta: number; date: string }[]>([]);
 
   // Synth Deck & Polyphonic Multi-Key State
-  const [activeAsset, setActiveAsset] = useState<AudioAsset>(INITIAL_ASSETS[0]);
+  const [activeAsset, setActiveAsset] = useState<AudioAsset>(FALLBACK_ASSETS[0]);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [activeNotes, setActiveNotes] = useState<string[]>([]);
   const [dockMinimized, setDockMinimized] = useState(false);
@@ -337,6 +341,63 @@ export default function ProdPresetsMarketplace() {
   const [macro1, setMacro1] = useState(60);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Load live packs & presets from Supabase
+  useEffect(() => {
+    async function loadCatalog() {
+      const [{ data: dbPacks }, { data: dbAssets }] = await Promise.all([
+        supabase.from("packs").select("*").order("created_at", { ascending: false }),
+        supabase.from("assets").select("*").order("filename", { ascending: true }),
+      ]);
+
+      const mergedPacks: Pack[] = [
+        ...(dbPacks ?? []).map((p) => ({
+          id: p.id,
+          title: p.title,
+          creator: p.creator,
+          coverGradient: p.cover_gradient,
+          description: p.description,
+          genre: p.genre,
+        })),
+        ...FALLBACK_PACKS,
+      ];
+      setPacks(mergedPacks);
+
+      const packMap = new Map(mergedPacks.map((p) => [p.id, p]));
+
+      const mappedDbAssets: AudioAsset[] = (dbAssets ?? []).map((row) => {
+        const parentPack = packMap.get(row.pack_id);
+        return {
+          id: row.id,
+          filename: row.filename,
+          storagePath: row.storage_path,
+          packId: row.pack_id ?? "blissful-edm-sounds",
+          packTitle: parentPack?.title ?? "Blissful EDM Sounds",
+          coverGradient: parentPack?.coverGradient ?? "from-cyan-500 via-blue-600 to-indigo-700",
+          engine: (row.engine as Exclude<SynthEngine, "All">) || "Serum",
+          extension: row.extension || ".SerumPreset",
+          category: row.category || "Synth",
+          tags: Array.isArray(row.tags) ? row.tags : ["serum"],
+          duration: row.duration || "0:08",
+          musicalKey: row.musical_key || "C min",
+          bpm: row.bpm ?? 128,
+          credits: row.credits ?? 2,
+          baseFreq: Number(row.base_freq) || 220,
+          waveformBars:
+            row.waveform_bars ||
+            "35,60,85,95,70,50,90,100,80,65,45,75,90,60,40,70,85,55,35,25",
+        };
+      });
+
+      const combinedAssets = [...mappedDbAssets, ...FALLBACK_ASSETS];
+      setAssets(combinedAssets);
+      if (mappedDbAssets.length > 0) {
+        setActiveAsset(mappedDbAssets[0]);
+      }
+    }
+
+    loadCatalog();
+  }, [supabase]);
 
   const loadUserWallet = useCallback(
     async (userId: string) => {
@@ -355,14 +416,11 @@ export default function ProdPresetsMarketplace() {
       if (unlockRows) {
         setOwnedIds(unlockRows.map((row) => row.asset_id));
         setCreditHistory(
-          unlockRows.map((row) => {
-            const matchedAsset = INITIAL_ASSETS.find((a) => a.id === row.asset_id);
-            return {
-              label: `Unlocked ${matchedAsset ? matchedAsset.filename : row.asset_id}`,
-              delta: -(matchedAsset?.credits ?? 2),
-              date: row.created_at ? new Date(row.created_at).toLocaleDateString() : "Saved",
-            };
-          })
+          unlockRows.map((row) => ({
+            label: `Unlocked ${row.asset_id}`,
+            delta: -2,
+            date: row.created_at ? new Date(row.created_at).toLocaleDateString() : "Saved",
+          }))
         );
       }
     },
@@ -559,13 +617,37 @@ export default function ProdPresetsMarketplace() {
     setTimeout(() => setIsPlayingPreview(false), 1400);
   };
 
+  const triggerFileDownload = async (asset: AudioAsset, userId: string) => {
+    if (!asset.storagePath) {
+      alert(`Saved ${asset.filename} to My Library! (Demo item — no storage file attached)`);
+      return;
+    }
+
+    const res = await fetch("/api/download", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assetId: asset.id,
+        userId,
+        storagePath: asset.storagePath,
+        filename: asset.filename,
+      }),
+    });
+    const data = await res.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert(data.error || "Unable to download file");
+    }
+  };
+
   const handleUnlockAsset = async (asset: AudioAsset) => {
     if (!user) {
       setAuthModalOpen(true);
       return;
     }
     if (ownedIds.includes(asset.id)) {
-      alert(`Re-downloading ${asset.filename} (0 Credits — Already in My Library)`);
+      await triggerFileDownload(asset, user.id);
       return;
     }
     if (credits < asset.credits) {
@@ -591,6 +673,8 @@ export default function ProdPresetsMarketplace() {
       { label: `Unlocked ${asset.filename}`, delta: -asset.credits, date: "Just now" },
       ...prev,
     ]);
+
+    await triggerFileDownload(asset, user.id);
   };
 
   const handleCompletePayment = async () => {
@@ -622,7 +706,7 @@ export default function ProdPresetsMarketplace() {
     }
   };
 
-  const filteredAssets = INITIAL_ASSETS.filter((item) => {
+  const filteredAssets = assets.filter((item) => {
     if (activeTab === "Samples" && item.engine !== "WAV") return false;
     if (activeTab === "Presets" && item.engine === "WAV") return false;
     if (activeTab === "My Library" && !ownedIds.includes(item.id)) return false;
@@ -825,7 +909,7 @@ export default function ProdPresetsMarketplace() {
         {/* PACKS GRID VIEW */}
         {activeTab === "Packs" && !selectedPack ? (
           <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {PACKS.map((pack) => (
+            {packs.map((pack) => (
               <div
                 key={pack.id}
                 onClick={() => setSelectedPack(pack)}
@@ -871,7 +955,7 @@ export default function ProdPresetsMarketplace() {
                   >
                     <option value="All">Synth / Format: All</option>
                     <option value="Analog Lab">Analog Lab (.labx)</option>
-                    <option value="Serum">Serum (.fxp)</option>
+                    <option value="Serum">Serum (.fxp / .SerumPreset)</option>
                     <option value="Vital">Vital (.vital)</option>
                     <option value="Omnisphere">Omnisphere (.prt_omn)</option>
                     <option value="WAV">Audio Samples (.wav)</option>
@@ -887,6 +971,7 @@ export default function ProdPresetsMarketplace() {
                     }`}
                   >
                     <option value="All">Key: Any</option>
+                    <option value="C min">C min</option>
                     <option value="C# min">C# min</option>
                     <option value="D# min">D# min</option>
                     <option value="E min">E min</option>
@@ -983,7 +1068,7 @@ export default function ProdPresetsMarketplace() {
                             <div
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const foundPack = PACKS.find((p) => p.id === item.packId);
+                                const foundPack = packs.find((p) => p.id === item.packId);
                                 if (foundPack) setSelectedPack(foundPack);
                               }}
                               title={`View pack: ${item.packTitle}`}
@@ -1102,7 +1187,7 @@ export default function ProdPresetsMarketplace() {
                                     : "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
                                 }`}
                               >
-                                {isOwned ? "✓ Saved" : `↓ ${item.credits} CR`}
+                                {isOwned ? "↓ Download" : `↓ ${item.credits} CR`}
                               </button>
                             </div>
                           </td>
