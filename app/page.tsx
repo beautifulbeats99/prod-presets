@@ -340,30 +340,29 @@ export default function ProdPresetsMarketplace() {
 
   const loadUserWallet = useCallback(
     async (userId: string) => {
-      const [{ data: profile }, { data: library }, { data: txs }] = await Promise.all([
+      const [{ data: profile }, { data: unlockRows }] = await Promise.all([
         supabase.from("profiles").select("credits").eq("id", userId).single(),
-        supabase.from("user_library").select("asset_id").eq("user_id", userId),
         supabase
-          .from("credit_transactions")
-          .select("label, delta, created_at")
+          .from("unlocks")
+          .select("asset_id, created_at")
           .eq("user_id", userId)
-          .order("created_at", { ascending: false })
-          .limit(15),
+          .order("created_at", { ascending: false }),
       ]);
 
       if (profile) {
         setCredits(profile.credits);
       }
-      if (library) {
-        setOwnedIds(library.map((row) => row.asset_id));
-      }
-      if (txs) {
+      if (unlockRows) {
+        setOwnedIds(unlockRows.map((row) => row.asset_id));
         setCreditHistory(
-          txs.map((t) => ({
-            label: t.label,
-            delta: t.delta,
-            date: new Date(t.created_at).toLocaleDateString(),
-          }))
+          unlockRows.map((row) => {
+            const matchedAsset = INITIAL_ASSETS.find((a) => a.id === row.asset_id);
+            return {
+              label: `Unlocked ${matchedAsset ? matchedAsset.filename : row.asset_id}`,
+              delta: -(matchedAsset?.credits ?? 2),
+              date: row.created_at ? new Date(row.created_at).toLocaleDateString() : "Saved",
+            };
+          })
         );
       }
     },
@@ -574,22 +573,24 @@ export default function ProdPresetsMarketplace() {
       return;
     }
 
-    const { data, error } = await supabase.rpc("unlock_asset", { p_asset_id: asset.id });
+    const { data: newBalance, error } = await supabase.rpc("unlock_asset", {
+      p_asset_id: asset.id,
+    });
+
     if (error) {
       alert(error.message);
       return;
     }
 
-    if (data?.status === "unlocked") {
-      setCredits(data.new_balance);
-      setOwnedIds((prev) => [...prev, asset.id]);
-      setCreditHistory((prev) => [
-        { label: data.label, delta: data.delta, date: "Just now" },
-        ...prev,
-      ]);
-    } else if (data?.status === "already_owned") {
-      setOwnedIds((prev) => (prev.includes(asset.id) ? prev : [...prev, asset.id]));
+    if (typeof newBalance === "number") {
+      setCredits(newBalance);
     }
+
+    setOwnedIds((prev) => (prev.includes(asset.id) ? prev : [...prev, asset.id]));
+    setCreditHistory((prev) => [
+      { label: `Unlocked ${asset.filename}`, delta: -asset.credits, date: "Just now" },
+      ...prev,
+    ]);
   };
 
   const handleCompletePayment = async () => {
