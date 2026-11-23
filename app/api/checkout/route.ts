@@ -27,7 +27,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid credit bundle." }, { status: 400 });
     }
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+      apiVersion: "2026-11-18.endive" as Stripe.LatestApiVersion,
+    });
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://prod-presets.vercel.app";
 
     const session = await stripe.checkout.sessions.create({
