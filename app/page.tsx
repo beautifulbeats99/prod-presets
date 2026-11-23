@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import type { User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase";
 
 type TabType = "Samples" | "Presets" | "Packs" | "My Library";
 type SynthEngine = "All" | "Analog Lab" | "Serum" | "Vital" | "Omnisphere" | "WAV";
@@ -290,7 +292,8 @@ function RotaryKnob({
 }
 
 export default function ProdPresetsMarketplace() {
-  // Default to Dark Mode
+  const supabase = useRef(createClient()).current;
+
   const [darkMode, setDarkMode] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>("Presets");
   const [selectedPack, setSelectedPack] = useState<Pack | null>(null);
@@ -300,17 +303,26 @@ export default function ProdPresetsMarketplace() {
   const [selectedKey, setSelectedKey] = useState<string>("All");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
+  // Supabase Auth State
+  const [user, setUser] = useState<User | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+
   // Credits & Payments
-  const [credits, setCredits] = useState<number>(100);
-  const [ownedIds, setOwnedIds] = useState<string[]>(["a2"]);
+  const [credits, setCredits] = useState<number>(0);
+  const [ownedIds, setOwnedIds] = useState<string[]>([]);
   const [accountOpen, setAccountOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("Card");
   const [selectedBundleCredits, setSelectedBundleCredits] = useState<number>(100);
-  const [creditHistory, setCreditHistory] = useState<{ label: string; delta: number; date: string }[]>([
-    { label: "Pro Creator Monthly Top-Up", delta: 100, date: "Today" },
-    { label: "Unlocked PP_Velvet_Juno_Pad_Lush.labx", delta: -2, date: "Today" },
-  ]);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutBanner, setCheckoutBanner] = useState<"success" | "canceled" | null>(null);
+  const [creditHistory, setCreditHistory] = useState<{ label: string; delta: number; date: string }[]>([]);
 
   // Synth Deck & Polyphonic Multi-Key State
   const [activeAsset, setActiveAsset] = useState<AudioAsset>(INITIAL_ASSETS[0]);
@@ -325,6 +337,112 @@ export default function ProdPresetsMarketplace() {
   const [macro1, setMacro1] = useState(60);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const loadUserWallet = useCallback(
+    async (userId: string) => {
+      const [{ data: profile }, { data: library }, { data: txs }] = await Promise.all([
+        supabase.from("profiles").select("credits").eq("id", userId).single(),
+        supabase.from("user_library").select("asset_id").eq("user_id", userId),
+        supabase
+          .from("credit_transactions")
+          .select("label, delta, created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(15),
+      ]);
+
+      if (profile) {
+        setCredits(profile.credits);
+      }
+      if (library) {
+        setOwnedIds(library.map((row) => row.asset_id));
+      }
+      if (txs) {
+        setCreditHistory(
+          txs.map((t) => ({
+            label: t.label,
+            delta: t.delta,
+            date: new Date(t.created_at).toLocaleDateString(),
+          }))
+        );
+      }
+    },
+    [supabase]
+  );
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user ?? null);
+      if (data.user) loadUserWallet(data.user.id);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      const nextUser = session?.user ?? null;
+      setUser(nextUser);
+      if (nextUser) {
+        loadUserWallet(nextUser.id);
+      } else {
+        setCredits(0);
+        setOwnedIds([]);
+        setCreditHistory([]);
+      }
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("checkout");
+    if (status === "success" || status === "canceled") {
+      setCheckoutBanner(status);
+      window.history.replaceState({}, "", "/");
+    }
+
+    return () => subscription.unsubscribe();
+  }, [loadUserWallet, supabase]);
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthNotice(null);
+
+    if (authMode === "signup") {
+      const { data, error } = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPassword,
+      });
+      setAuthLoading(false);
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
+      if (data.session) {
+        setAuthModalOpen(false);
+        setAuthEmail("");
+        setAuthPassword("");
+      } else {
+        setAuthNotice("Check your email for a confirmation link, then sign in.");
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
+      });
+      setAuthLoading(false);
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
+      setAuthModalOpen(false);
+      setAuthEmail("");
+      setAuthPassword("");
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setAccountOpen(false);
+  };
 
   const resetKnobs = () => {
     setCutoff(72);
@@ -391,7 +509,6 @@ export default function ProdPresetsMarketplace() {
     [activeAsset.engine, cutoff, envelope, macro1, resonance, spaceMix]
   );
 
-  // Polyphonic Computer Keyboard Support (Multiple keys stay lit while held)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
@@ -443,7 +560,11 @@ export default function ProdPresetsMarketplace() {
     setTimeout(() => setIsPlayingPreview(false), 1400);
   };
 
-  const handleUnlockAsset = (asset: AudioAsset) => {
+  const handleUnlockAsset = async (asset: AudioAsset) => {
+    if (!user) {
+      setAuthModalOpen(true);
+      return;
+    }
     if (ownedIds.includes(asset.id)) {
       alert(`Re-downloading ${asset.filename} (0 Credits — Already in My Library)`);
       return;
@@ -452,25 +573,52 @@ export default function ProdPresetsMarketplace() {
       setPaymentModalOpen(true);
       return;
     }
-    setCredits((c) => c - asset.credits);
-    setOwnedIds((prev) => [...prev, asset.id]);
-    setCreditHistory((prev) => [
-      { label: `Unlocked ${asset.filename}`, delta: -asset.credits, date: "Just now" },
-      ...prev,
-    ]);
+
+    const { data, error } = await supabase.rpc("unlock_asset", { p_asset_id: asset.id });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (data?.status === "unlocked") {
+      setCredits(data.new_balance);
+      setOwnedIds((prev) => [...prev, asset.id]);
+      setCreditHistory((prev) => [
+        { label: data.label, delta: data.delta, date: "Just now" },
+        ...prev,
+      ]);
+    } else if (data?.status === "already_owned") {
+      setOwnedIds((prev) => (prev.includes(asset.id) ? prev : [...prev, asset.id]));
+    }
   };
 
-  const handleCompletePayment = () => {
-    setCredits((c) => c + selectedBundleCredits);
-    setCreditHistory((prev) => [
-      {
-        label: `Added ${selectedBundleCredits} Credits via ${selectedPaymentMethod}`,
-        delta: selectedBundleCredits,
-        date: "Just now",
-      },
-      ...prev,
-    ]);
-    setPaymentModalOpen(false);
+  const handleCompletePayment = async () => {
+    if (!user) {
+      setPaymentModalOpen(false);
+      setAuthModalOpen(true);
+      return;
+    }
+
+    setCheckoutLoading(true);
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credits: selectedBundleCredits }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Unable to start checkout");
+        setCheckoutLoading(false);
+        return;
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch {
+      alert("Network error connecting to Stripe Checkout");
+      setCheckoutLoading(false);
+    }
   };
 
   const filteredAssets = INITIAL_ASSETS.filter((item) => {
@@ -513,10 +661,10 @@ export default function ProdPresetsMarketplace() {
               className="flex items-center gap-2 cursor-pointer"
             >
               <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-600/30 font-bold text-xs">
-                PP
+                VP
               </div>
               <span className="font-bold text-base sm:text-lg tracking-tight">
-                Prod<span className="text-blue-500">Presets</span>
+                Virtual<span className="text-blue-500">Presets</span>
                 <span className="text-xs font-normal opacity-60">.com</span>
               </span>
             </div>
@@ -559,8 +707,8 @@ export default function ProdPresetsMarketplace() {
           <div className="flex items-center gap-2">
             {/* Credit Wallet + Quick Buy Button */}
             <button
-              onClick={() => setPaymentModalOpen(true)}
-              title="Click to add credits or manage payment methods"
+              onClick={() => (user ? setPaymentModalOpen(true) : setAuthModalOpen(true))}
+              title="Click to add credits"
               className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 border transition-colors ${
                 darkMode
                   ? "bg-blue-950/60 border-blue-800/70 text-blue-400 hover:border-blue-500"
@@ -587,26 +735,55 @@ export default function ProdPresetsMarketplace() {
               {darkMode ? "☀ Light" : "☾ Dark"}
             </button>
 
-            {/* Account Button */}
-            <button
-              onClick={() => setAccountOpen(true)}
-              className={`flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
-                darkMode
-                  ? "border-zinc-800 bg-zinc-900 hover:border-blue-500"
-                  : "border-slate-200 bg-white hover:border-blue-500 shadow-sm"
-              }`}
-            >
-              <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px]">
-                P
-              </div>
-              <span className="hidden sm:inline">Account</span>
-            </button>
+            {/* Account / Sign In Button */}
+            {user ? (
+              <button
+                onClick={() => setAccountOpen(true)}
+                className={`flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
+                  darkMode
+                    ? "border-zinc-800 bg-zinc-900 hover:border-blue-500"
+                    : "border-slate-200 bg-white hover:border-blue-500 shadow-sm"
+                }`}
+              >
+                <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px] uppercase">
+                  {user.email?.[0] ?? "P"}
+                </div>
+                <span className="hidden sm:inline max-w-[110px] truncate">{user.email}</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+              >
+                Sign In
+              </button>
+            )}
           </div>
         </div>
       </header>
 
-      {/* MAIN CATALOG AREA (MAXIMIZED SPACE FOR PRESETS & SAMPLES) */}
+      {/* MAIN CATALOG AREA */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 space-y-4">
+        {/* CHECKOUT STATUS BANNER */}
+        {checkoutBanner && (
+          <div
+            className={`rounded-xl border px-4 py-3 flex items-center justify-between text-xs font-medium ${
+              checkoutBanner === "success"
+                ? "bg-emerald-950/50 border-emerald-700 text-emerald-300"
+                : "bg-zinc-900 border-zinc-700 text-zinc-300"
+            }`}
+          >
+            <span>
+              {checkoutBanner === "success"
+                ? "✓ Payment confirmed! Your credits have been added to your wallet."
+                : "Checkout canceled — no charges were made."}
+            </span>
+            <button onClick={() => setCheckoutBanner(null)} className="opacity-70 hover:opacity-100">
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* PACK DETAIL BANNER */}
         {selectedPack && (
           <section
@@ -661,7 +838,7 @@ export default function ProdPresetsMarketplace() {
                   className={`aspect-square w-full rounded-xl bg-gradient-to-br ${pack.coverGradient} mb-3.5 flex items-center justify-center text-white relative overflow-hidden`}
                 >
                   <span className="text-3xl font-extrabold tracking-tight opacity-85 group-hover:scale-110 transition-transform">
-                    PP
+                    VP
                   </span>
                   <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-md bg-black/50 backdrop-blur-sm text-xs font-semibold">
                     {pack.genre}
@@ -811,7 +988,7 @@ export default function ProdPresetsMarketplace() {
                               title={`View pack: ${item.packTitle}`}
                               className={`w-9 h-9 rounded-md bg-gradient-to-br ${item.coverGradient} flex items-center justify-center text-white text-[10px] font-bold shadow-sm hover:scale-105 transition-transform`}
                             >
-                              PP
+                              VP
                             </div>
                           </td>
 
@@ -936,7 +1113,9 @@ export default function ProdPresetsMarketplace() {
 
                 {filteredAssets.length === 0 && (
                   <div className="py-12 text-center text-sm opacity-60">
-                    No presets or samples match your current filters.
+                    {activeTab === "My Library" && !user
+                      ? "Sign in to view your saved presets and samples."
+                      : "No presets or samples match your current filters."}
                   </div>
                 )}
               </div>
@@ -945,7 +1124,7 @@ export default function ProdPresetsMarketplace() {
         )}
       </main>
 
-      {/* COMPACT BOTTOM DOCKED SYNTH DECK (FX KNOBS + POLYPHONIC MINI PIANO) */}
+      {/* COMPACT BOTTOM DOCKED SYNTH DECK */}
       <footer
         className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-xl transition-colors ${
           darkMode
@@ -955,7 +1134,6 @@ export default function ProdPresetsMarketplace() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
-            {/* Left: Active Patch & Audition Controls */}
             <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[230px]">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -1000,7 +1178,6 @@ export default function ProdPresetsMarketplace() {
 
             {!dockMinimized && (
               <>
-                {/* Middle: Compact 5 FX Rotary Knobs */}
                 <div
                   className={`flex items-center justify-center gap-3.5 sm:gap-4 px-3.5 py-1.5 rounded-xl border ${
                     darkMode ? "bg-zinc-950/70 border-zinc-800" : "bg-slate-50 border-slate-200"
@@ -1013,7 +1190,6 @@ export default function ProdPresetsMarketplace() {
                   <RotaryKnob label="Macro" value={macro1} onChange={setMacro1} darkMode={darkMode} />
                 </div>
 
-                {/* Right: Compact Polyphonic 2-Octave Mini Piano (Multiple keys stay lit!) */}
                 <div className="w-full lg:w-[420px] xl:w-[470px] overflow-x-auto select-none">
                   <div className="relative h-14 min-w-[380px] w-full flex">
                     {PIANO_NOTES.filter((n) => !n.isBlack).map((k) => {
@@ -1072,7 +1248,110 @@ export default function ProdPresetsMarketplace() {
         </div>
       </footer>
 
-      {/* MULTI-PAYMENT CHECKOUT MODAL (CARD, APPLE PAY, GOOGLE PAY, PAYPAL, CRYPTO) */}
+      {/* AUTH MODAL (SIGN IN / CREATE ACCOUNT) */}
+      {authModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div
+            className={`w-full max-w-sm rounded-2xl border p-6 space-y-4 shadow-2xl ${
+              darkMode ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-900"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold">
+                  {authMode === "signin" ? "Sign In to VirtualPresets" : "Create Producer Account"}
+                </h3>
+                <p className="text-xs opacity-60">Sync your credits & preset library across devices</p>
+              </div>
+              <button
+                onClick={() => setAuthModalOpen(false)}
+                className="px-2.5 py-1 rounded-lg hover:bg-zinc-800/40 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAuthSubmit} className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold opacity-75 block mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="you@studio.com"
+                  className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
+                    darkMode ? "bg-zinc-950 border-zinc-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold opacity-75 block mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
+                    darkMode ? "bg-zinc-950 border-zinc-800" : "bg-slate-50 border-slate-200"
+                  }`}
+                />
+              </div>
+
+              {authError && <p className="text-xs text-rose-400">{authError}</p>}
+              {authNotice && <p className="text-xs text-emerald-400">{authNotice}</p>}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition-colors"
+              >
+                {authLoading
+                  ? "Please wait..."
+                  : authMode === "signin"
+                  ? "Sign In"
+                  : "Create Account"}
+              </button>
+            </form>
+
+            <div className="text-center text-xs opacity-75 pt-1">
+              {authMode === "signin" ? (
+                <>
+                  New to VirtualPresets?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("signup");
+                      setAuthError(null);
+                    }}
+                    className="text-blue-500 font-semibold hover:underline"
+                  >
+                    Create an account
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode("signin");
+                      setAuthError(null);
+                    }}
+                    className="text-blue-500 font-semibold hover:underline"
+                  >
+                    Sign in
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* STRIPE CREDIT CHECKOUT MODAL */}
       {paymentModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div
@@ -1082,7 +1361,7 @@ export default function ProdPresetsMarketplace() {
           >
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold">Top Up ProdPresets Credits</h3>
+                <h3 className="text-lg font-bold">Top Up VirtualPresets Credits</h3>
                 <p className="text-xs opacity-60">Instant delivery • Credits never expire</p>
               </div>
               <button
@@ -1093,7 +1372,6 @@ export default function ProdPresetsMarketplace() {
               </button>
             </div>
 
-            {/* Credit Bundle Selector */}
             <div className="grid grid-cols-3 gap-2.5">
               {[
                 { cr: 50, price: "$9.99", tag: "Starter" },
@@ -1121,19 +1399,16 @@ export default function ProdPresetsMarketplace() {
               })}
             </div>
 
-            {/* Payment Method Options */}
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider opacity-60 block">
-                Select Payment Method
+                Supported via Stripe Checkout
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { id: "Card", label: "💳 Credit / Debit Card" },
                   { id: "Apple Pay", label: " Apple Pay" },
                   { id: "Google Pay", label: "G Pay / Link" },
-                  { id: "PayPal", label: "🅿 PayPal" },
-                  { id: "Klarna / Afterpay", label: "Split Pay (4x)" },
-                  { id: "USDC / Crypto", label: "◈ USDC / Crypto" },
+                  { id: "Klarna", label: "Split Pay / Klarna" },
                 ].map((method) => {
                   const active = selectedPaymentMethod === method.id;
                   return (
@@ -1157,16 +1432,19 @@ export default function ProdPresetsMarketplace() {
 
             <button
               onClick={handleCompletePayment}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors"
+              disabled={checkoutLoading}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors"
             >
-              Pay with {selectedPaymentMethod} • Add {selectedBundleCredits} Credits
+              {checkoutLoading
+                ? "Redirecting to Stripe..."
+                : `Continue to Stripe • Add ${selectedBundleCredits} Credits`}
             </button>
           </div>
         </div>
       )}
 
       {/* USER ACCOUNT DRAWER */}
-      {accountOpen && (
+      {accountOpen && user && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end">
           <div
             className={`w-full max-w-md h-full p-6 flex flex-col justify-between overflow-y-auto ${
@@ -1176,12 +1454,12 @@ export default function ProdPresetsMarketplace() {
             <div className="space-y-6">
               <div className="flex items-center justify-between border-b pb-4 border-slate-200 dark:border-zinc-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
-                    P
+                  <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold uppercase">
+                    {user.email?.[0] ?? "P"}
                   </div>
                   <div>
-                    <h3 className="font-bold text-base">Producer Account</h3>
-                    <p className="text-xs opacity-60">Pro Creator Subscription • Active</p>
+                    <h3 className="font-bold text-base truncate max-w-[230px]">{user.email}</h3>
+                    <p className="text-xs opacity-60">VirtualPresets Studio Wallet</p>
                   </div>
                 </div>
                 <button
@@ -1224,32 +1502,42 @@ export default function ProdPresetsMarketplace() {
                   Recent Credit Activity
                 </h4>
                 <div className="space-y-2.5">
-                  {creditHistory.map((entry, i) => (
-                    <div
-                      key={i}
-                      className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
-                        darkMode ? "border-zinc-800 bg-zinc-950/50" : "border-slate-100 bg-slate-50"
-                      }`}
-                    >
-                      <div>
-                        <div className="font-medium">{entry.label}</div>
-                        <div className="opacity-50 text-[11px]">{entry.date}</div>
-                      </div>
-                      <span
-                        className={`font-mono font-bold ${
-                          entry.delta > 0 ? "text-emerald-500" : "text-blue-500"
+                  {creditHistory.length === 0 ? (
+                    <p className="text-xs opacity-50">No credit transactions yet.</p>
+                  ) : (
+                    creditHistory.map((entry, i) => (
+                      <div
+                        key={i}
+                        className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
+                          darkMode ? "border-zinc-800 bg-zinc-950/50" : "border-slate-100 bg-slate-50"
                         }`}
                       >
-                        {entry.delta > 0 ? `+${entry.delta}` : entry.delta} CR
-                      </span>
-                    </div>
-                  ))}
+                        <div>
+                          <div className="font-medium">{entry.label}</div>
+                          <div className="opacity-50 text-[11px]">{entry.date}</div>
+                        </div>
+                        <span
+                          className={`font-mono font-bold ${
+                            entry.delta > 0 ? "text-emerald-500" : "text-blue-500"
+                          }`}
+                        >
+                          {entry.delta > 0 ? `+${entry.delta}` : entry.delta} CR
+                        </span>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 text-xs opacity-60 text-center">
-              ProdPresets.com • 100% Royalty-Free Commercial Licensing
+            <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+              <span className="opacity-60">100% Royalty-Free Licensing</span>
+              <button
+                onClick={handleSignOut}
+                className="px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-rose-500 text-rose-400 font-semibold"
+              >
+                Sign Out
+              </button>
             </div>
           </div>
         </div>
