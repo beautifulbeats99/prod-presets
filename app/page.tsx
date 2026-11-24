@@ -5,7 +5,7 @@ import * as Tone from "tone";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase";
 
-type TabType = "Samples" | "Presets" | "Packs" | "My Library";
+type TabType = "Presets" | "Samples" | "Packs" | "My Library";
 type SynthEngine = "All" | "Analog Lab" | "Serum" | "Vital" | "Omnisphere" | "WAV";
 
 interface AudioAsset {
@@ -39,9 +39,9 @@ interface Pack {
 
 interface MidiRollNote {
   id: string;
-  note: string; // e.g., "C3", "G3"
-  step: number; // 0..15 (16th notes in 1 bar)
-  durationSteps: number; // 1..8
+  note: string;
+  step: number;
+  durationSteps: number;
 }
 
 const FALLBACK_PACKS: Pack[] = [
@@ -90,7 +90,7 @@ const FALLBACK_ASSETS: AudioAsset[] = [
     bpm: 140,
     credits: 2,
     baseFreq: 110,
-    waveformBars: "35,60,85,95,70,50,90,100,80,65,45,75,90,60,40,70,85,55,35,25",
+    waveformBars: "35,60,85,95,70,50,90,100,80,65,45,75,90,60,40,70,85,55,35,25,65,80,55,40",
   },
   {
     id: "a2",
@@ -107,7 +107,7 @@ const FALLBACK_ASSETS: AudioAsset[] = [
     bpm: 95,
     credits: 2,
     baseFreq: 220,
-    waveformBars: "25,40,55,70,85,95,90,85,80,75,85,90,80,70,60,50,45,35,30,20",
+    waveformBars: "25,40,55,70,85,95,90,85,80,75,85,90,80,70,60,50,45,35,30,20,40,55,45,30",
   },
   {
     id: "a3",
@@ -124,7 +124,7 @@ const FALLBACK_ASSETS: AudioAsset[] = [
     bpm: 128,
     credits: 2,
     baseFreq: 330,
-    waveformBars: "90,45,85,40,95,50,80,35,90,45,85,40,75,35,80,40,65,30,50,25",
+    waveformBars: "90,45,85,40,95,50,80,35,90,45,85,40,75,35,80,40,65,30,50,25,75,40,60,30",
   },
   {
     id: "a4",
@@ -141,7 +141,7 @@ const FALLBACK_ASSETS: AudioAsset[] = [
     bpm: null,
     credits: 2,
     baseFreq: 261.63,
-    waveformBars: "20,30,45,60,75,85,95,100,95,90,85,80,75,70,60,50,40,30,25,15",
+    waveformBars: "20,30,45,60,75,85,95,100,95,90,85,80,75,70,60,50,40,30,25,15,35,45,30,20",
   },
   {
     id: "a5",
@@ -158,7 +158,7 @@ const FALLBACK_ASSETS: AudioAsset[] = [
     bpm: 90,
     credits: 2,
     baseFreq: 164.81,
-    waveformBars: "95,40,75,30,90,45,85,35,95,40,80,30,90,45,75,35,85,40,60,25",
+    waveformBars: "95,40,75,30,90,45,85,35,95,40,80,30,90,45,75,35,85,40,60,25,80,35,65,30",
   },
   {
     id: "a6",
@@ -175,7 +175,7 @@ const FALLBACK_ASSETS: AudioAsset[] = [
     bpm: 87,
     credits: 2,
     baseFreq: 220,
-    waveformBars: "75,85,70,60,80,90,75,65,85,80,70,60,75,85,70,55,45,35,25,20",
+    waveformBars: "75,85,70,60,80,90,75,65,85,80,70,60,75,85,70,55,45,35,25,20,60,70,50,35",
   },
 ];
 
@@ -194,7 +194,6 @@ const QUICK_TAGS = [
   "ambient",
 ];
 
-// Mapped around C3 so C3 plays the exact unshifted Serum bounce
 const PIANO_NOTES = [
   { note: "C3", keyBind: "a", freq: 130.81, isBlack: false, midiNum: 48 },
   { note: "C#3", keyBind: "w", freq: 138.59, isBlack: true, midiNum: 49 },
@@ -215,7 +214,6 @@ const PIANO_NOTES = [
   { note: "E4", keyBind: ";", freq: 329.63, isBlack: false, midiNum: 64 },
 ];
 
-// Top-to-bottom rows for the Piano Roll grid (E4 at top down to C3 at bottom)
 const ROLL_ROWS = [...PIANO_NOTES].reverse();
 
 const STARTER_PATTERNS: Record<string, MidiRollNote[]> = {
@@ -249,7 +247,6 @@ const STARTER_PATTERNS: Record<string, MidiRollNote[]> = {
   ],
 };
 
-// Lightweight Standard MIDI File (.mid) parser for browser file imports
 function parseMidiFileToRollNotes(buffer: ArrayBuffer): MidiRollNote[] {
   const bytes = new Uint8Array(buffer);
   if (bytes.length < 14) return [];
@@ -416,9 +413,9 @@ function RotaryKnob({
       <div
         onMouseDown={handleMouseDown}
         title="Click and drag up or down to adjust"
-        className={`relative w-9 h-9 rounded-full flex items-center justify-center cursor-ns-resize transition-shadow ${
+        className={`relative w-8 h-8 rounded-full flex items-center justify-center cursor-ns-resize transition-shadow ${
           darkMode
-            ? "bg-zinc-900 border border-zinc-700 shadow-inner hover:border-blue-500"
+            ? "bg-zinc-900 border border-white/10 shadow-inner hover:border-blue-500"
             : "bg-white border border-slate-200 shadow-sm hover:border-blue-500"
         }`}
       >
@@ -436,7 +433,7 @@ function RotaryKnob({
             cy="24"
             r="20"
             fill="none"
-            stroke="#2563eb"
+            stroke="#3b82f6"
             strokeWidth="3.5"
             strokeDasharray={`${(value / 100) * 94} 126`}
             strokeLinecap="round"
@@ -445,17 +442,17 @@ function RotaryKnob({
 
         <div
           style={{ transform: `rotate(${angle}deg)` }}
-          className={`w-6 h-6 rounded-full flex items-start justify-center pt-0.5 transition-transform duration-75 ${
-            darkMode ? "bg-zinc-800 border border-zinc-700" : "bg-slate-50 border border-slate-200"
+          className={`w-5 h-5 rounded-full flex items-start justify-center pt-0.5 transition-transform duration-75 ${
+            darkMode ? "bg-zinc-800 border border-white/10" : "bg-slate-50 border border-slate-200"
           }`}
         >
-          <div className="w-0.5 h-2 rounded-full bg-blue-600" />
+          <div className="w-0.5 h-1.5 rounded-full bg-blue-500" />
         </div>
       </div>
-      <span className={`mt-1 text-[10px] font-medium leading-none ${darkMode ? "text-zinc-300" : "text-slate-700"}`}>
+      <span className={`mt-1 text-[10px] font-medium leading-none ${darkMode ? "text-zinc-400" : "text-slate-700"}`}>
         {label}
       </span>
-      <span className="text-[9px] font-mono text-blue-500 font-semibold leading-tight">{value}%</span>
+      <span className="text-[9px] font-mono text-blue-400 font-semibold leading-tight">{value}%</span>
     </div>
   );
 }
@@ -526,7 +523,6 @@ export default function ProdPresetsMarketplace() {
   const autoPlayAfterLoadRef = useRef<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // Build public URL from the capitalized `Previews` bucket
   const getPreviewUrl = useCallback((previewPath?: string | null) => {
     if (!previewPath) return null;
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -538,7 +534,6 @@ export default function ProdPresetsMarketplace() {
     return `${baseUrl}/storage/v1/object/public/Previews/${encodedPath}`;
   }, []);
 
-  // Load live packs & presets from Supabase
   useEffect(() => {
     async function loadCatalog() {
       const [{ data: dbPacks }, { data: dbAssets }] = await Promise.all([
@@ -582,7 +577,7 @@ export default function ProdPresetsMarketplace() {
           baseFreq: Number(row.base_freq) || 220,
           waveformBars:
             row.waveform_bars ||
-            "35,60,85,95,70,50,90,100,80,65,45,75,90,60,40,70,85,55,35,25",
+            "35,60,85,95,70,50,90,100,80,65,45,75,90,60,40,70,85,55,35,25,65,80,55,40",
         };
       });
 
@@ -596,14 +591,12 @@ export default function ProdPresetsMarketplace() {
     loadCatalog();
   }, [supabase]);
 
-  // Sync sequencer BPM when switching to a preset that has a tagged BPM
   useEffect(() => {
     if (activeAsset.bpm && activeAsset.bpm >= 60 && activeAsset.bpm <= 200) {
       setRollBpm(activeAsset.bpm);
     }
   }, [activeAsset.id, activeAsset.bpm]);
 
-  // Load real .m4a audio sample into Tone.Sampler whenever activeAsset changes
   useEffect(() => {
     setIsSampleReady(false);
     setSampleError(null);
@@ -653,7 +646,6 @@ export default function ProdPresetsMarketplace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAsset.id, activeAsset.previewPath, getPreviewUrl]);
 
-  // Live update Tone.js Filter & Release from Rotary Knobs
   useEffect(() => {
     if (filterRef.current) {
       const minFreq = 180;
@@ -834,7 +826,6 @@ export default function ProdPresetsMarketplace() {
     [activeAsset.engine, cutoff, envelope, macro1, resonance, spaceMix]
   );
 
-  // Trigger a timed note (used by Piano Roll playback)
   const triggerTimedNote = useCallback(
     async (noteName: string, durationSec: number) => {
       const found = PIANO_NOTES.find((n) => n.note === noteName);
@@ -852,7 +843,6 @@ export default function ProdPresetsMarketplace() {
     [activeAsset.previewPath, isSampleReady, triggerFallbackOsc]
   );
 
-  // Piano Roll 16-step loop playback engine
   useEffect(() => {
     if (!isRollPlaying) {
       setCurrentStep(null);
@@ -1131,13 +1121,19 @@ export default function ProdPresetsMarketplace() {
     return true;
   });
 
+  const navItems: { label: TabType; icon: string }[] = [
+    { label: "Presets", icon: "🎛" },
+    { label: "Samples", icon: "〰" },
+    { label: "Packs", icon: "▤" },
+    { label: "My Library", icon: "↓" },
+  ];
+
   return (
     <div
-      className={`min-h-screen transition-colors duration-200 ${
+      className={`min-h-screen flex transition-colors duration-200 ${
         pianoRollOpen ? "pb-[430px]" : "pb-44"
-      } ${darkMode ? "bg-[#0e0f12] text-zinc-100" : "bg-white text-slate-900"}`}
+      } ${darkMode ? "bg-[#09090b] text-zinc-100" : "bg-slate-50/70 text-slate-900"}`}
     >
-      {/* Hidden MIDI File Input */}
       <input
         ref={midiFileInputRef}
         type="file"
@@ -1146,54 +1142,66 @@ export default function ProdPresetsMarketplace() {
         className="hidden"
       />
 
-      {/* TOP NAVIGATION BAR */}
-      <header
-        className={`sticky top-0 z-30 border-b backdrop-blur-md ${
-          darkMode ? "bg-[#0e0f12]/90 border-zinc-800" : "bg-white/95 border-slate-200"
+      {/* SLEEK LEFT STUDIO SIDEBAR */}
+      <aside
+        className={`hidden md:flex flex-col justify-between w-56 shrink-0 sticky top-0 h-screen border-r px-3.5 py-5 select-none ${
+          darkMode ? "bg-[#09090b] border-white/[0.06]" : "bg-white border-slate-200"
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-6">
-            <div
-              onClick={() => {
-                setSelectedPack(null);
-                setActiveTab("Presets");
-              }}
-              className="flex items-center gap-2 cursor-pointer"
-            >
-              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-600/30 font-bold text-xs">
-                VP
-              </div>
-              <span className="font-bold text-base sm:text-lg tracking-tight">
+        <div className="space-y-6">
+          {/* Brand Logo */}
+          <div
+            onClick={() => {
+              setSelectedPack(null);
+              setActiveTab("Presets");
+            }}
+            className="flex items-center gap-2.5 px-2 cursor-pointer group"
+          >
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-blue-600/25 font-extrabold text-xs tracking-tighter">
+              VP
+            </div>
+            <div className="leading-none">
+              <span className="font-bold text-base tracking-tight block">
                 Virtual<span className="text-blue-500">Presets</span>
-                <span className="text-xs font-normal opacity-60">.com</span>
+              </span>
+              <span className="text-[10px] font-mono uppercase tracking-widest opacity-45">
+                Sound Studio
               </span>
             </div>
+          </div>
 
-            <nav className="flex items-center gap-1 overflow-x-auto">
-              {(["Samples", "Presets", "Packs", "My Library"] as TabType[]).map((tab) => (
+          {/* Primary Navigation */}
+          <nav className="space-y-1">
+            {navItems.map((item) => {
+              const active = activeTab === item.label;
+              return (
                 <button
-                  key={tab}
+                  key={item.label}
                   onClick={() => {
                     setSelectedPack(null);
-                    setActiveTab(tab);
+                    setActiveTab(item.label);
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                    activeTab === tab
-                      ? "bg-blue-600 text-white"
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all ${
+                    active
+                      ? darkMode
+                        ? "bg-white/[0.08] text-white font-semibold shadow-xs"
+                        : "bg-blue-50 text-blue-700 font-semibold"
                       : darkMode
-                      ? "text-zinc-400 hover:text-white hover:bg-zinc-800"
+                      ? "text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04]"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                   }`}
                 >
-                  {tab}
-                  {tab === "My Library" && (
+                  <span className="flex items-center gap-2.5">
+                    <span className="text-xs opacity-75">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </span>
+                  {item.label === "My Library" && (
                     <span
-                      className={`text-[11px] px-1.5 rounded-full ${
-                        activeTab === tab
-                          ? "bg-blue-500 text-white"
+                      className={`text-[10px] font-mono px-1.5 py-0.5 rounded-md ${
+                        active
+                          ? "bg-blue-600 text-white"
                           : darkMode
-                          ? "bg-zinc-800 text-zinc-300"
+                          ? "bg-white/[0.06] text-zinc-400"
                           : "bg-slate-200 text-slate-700"
                       }`}
                     >
@@ -1201,444 +1209,558 @@ export default function ProdPresetsMarketplace() {
                     </span>
                   )}
                 </button>
-              ))}
-            </nav>
-          </div>
+              );
+            })}
+          </nav>
 
-          <div className="flex items-center gap-2">
-            {/* Credit Wallet + Quick Buy Button */}
-            <button
-              onClick={() => (user ? setPaymentModalOpen(true) : setAuthModalOpen(true))}
-              title="Click to add credits"
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 border transition-colors ${
-                darkMode
-                  ? "bg-blue-950/60 border-blue-800/70 text-blue-400 hover:border-blue-500"
-                  : "bg-blue-50 border-blue-200 text-blue-700 hover:border-blue-400"
-              }`}
-            >
-              <span className="text-blue-500">✦</span>
-              <span>{credits} CR</span>
-              <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[10px]">
-                + Buy
-              </span>
-            </button>
-
-            {/* Dark / Light Theme Switcher */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              aria-label="Toggle studio theme"
-              className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-                darkMode
-                  ? "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700"
-                  : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              {darkMode ? "☀ Light" : "☾ Dark"}
-            </button>
-
-            {/* Account / Sign In Button */}
-            {user ? (
-              <button
-                onClick={() => setAccountOpen(true)}
-                className={`flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
-                  darkMode
-                    ? "border-zinc-800 bg-zinc-900 hover:border-blue-500"
-                    : "border-slate-200 bg-white hover:border-blue-500 shadow-sm"
-                }`}
-              >
-                <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[11px] uppercase">
-                  {user.email?.[0] ?? "P"}
-                </div>
-                <span className="hidden sm:inline max-w-[110px] truncate">{user.email}</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                className="px-3 py-1.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
-              >
-                Sign In
-              </button>
-            )}
+          {/* Quick Engines Shortcut */}
+          <div className="pt-2 border-t border-white/[0.06] space-y-1.5">
+            <div className="px-3 text-[10px] font-semibold uppercase tracking-widest opacity-40">
+              Synth Engines
+            </div>
+            {(["All", "Serum", "Analog Lab", "Vital", "Omnisphere"] as SynthEngine[]).map((eng) => {
+              const isSelected = selectedEngine === eng;
+              return (
+                <button
+                  key={eng}
+                  onClick={() => {
+                    setActiveTab("Presets");
+                    setSelectedEngine(eng);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition-colors flex items-center justify-between ${
+                    isSelected
+                      ? "text-blue-400 font-semibold bg-blue-500/10"
+                      : darkMode
+                      ? "text-zinc-500 hover:text-zinc-300"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  <span>{eng === "All" ? "All Engines" : eng}</span>
+                  {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                </button>
+              );
+            })}
           </div>
         </div>
-      </header>
 
-      {/* MAIN CATALOG AREA */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 space-y-4">
-        {/* CHECKOUT STATUS BANNER */}
-        {checkoutBanner && (
-          <div
-            className={`rounded-xl border px-4 py-3 flex items-center justify-between text-xs font-medium ${
-              checkoutBanner === "success"
-                ? "bg-emerald-950/50 border-emerald-700 text-emerald-300"
-                : "bg-zinc-900 border-zinc-700 text-zinc-300"
+        {/* Sidebar Bottom Controls */}
+        <div className="space-y-2 pt-4 border-t border-white/[0.06]">
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
+              darkMode
+                ? "border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:text-white"
+                : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
             }`}
           >
-            <span>
-              {checkoutBanner === "success"
-                ? "✓ Payment confirmed! Your credits have been added to your wallet."
-                : "Checkout canceled — no charges were made."}
-            </span>
-            <button onClick={() => setCheckoutBanner(null)} className="opacity-70 hover:opacity-100">
-              ✕
-            </button>
-          </div>
-        )}
+            <span>Appearance</span>
+            <span className="font-mono text-[11px]">{darkMode ? "☀ Light" : "☾ Dark"}</span>
+          </button>
+        </div>
+      </aside>
 
-        {/* PACK DETAIL BANNER */}
-        {selectedPack && (
-          <section
-            className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 ${
-              darkMode ? "bg-zinc-900 border-zinc-800" : "bg-blue-50/50 border-blue-100"
-            }`}
-          >
-            <div className="flex items-center gap-4">
-              <div
-                className={`w-20 h-20 rounded-xl bg-gradient-to-br ${selectedPack.coverGradient} flex items-center justify-center text-white shadow-md shrink-0 font-bold text-lg`}
-              >
-                PACK
+      {/* MAIN CONTENT SHELL */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* SLEEK TOP BAR WITH PILL SEARCH & CREDITS PILL */}
+        <header
+          className={`sticky top-0 z-20 backdrop-blur-xl border-b ${
+            darkMode ? "bg-[#09090b]/85 border-white/[0.06]" : "bg-white/90 border-slate-200"
+          }`}
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-7 h-16 flex items-center justify-between gap-4">
+            {/* Mobile Brand + Nav */}
+            <div className="flex md:hidden items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
+                VP
               </div>
-              <div className="space-y-1">
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-500">
-                  {selectedPack.genre}
-                </span>
-                <h1 className="text-xl font-bold">{selectedPack.title}</h1>
-                <p className={`text-xs max-w-xl ${darkMode ? "text-zinc-400" : "text-slate-600"}`}>
-                  {selectedPack.description}
-                </p>
-                <p className="text-xs font-medium text-blue-500 pt-0.5">By {selectedPack.creator}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setSelectedPack(null)}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold ${
-                darkMode
-                  ? "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
-                  : "border-slate-200 bg-white hover:bg-slate-50"
-              }`}
-            >
-              ✕ Back to All Sounds
-            </button>
-          </section>
-        )}
-
-        {/* PACKS GRID VIEW */}
-        {activeTab === "Packs" && !selectedPack ? (
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {packs.map((pack) => (
-              <div
-                key={pack.id}
-                onClick={() => setSelectedPack(pack)}
-                className={`group rounded-2xl border p-4 cursor-pointer transition-all hover:-translate-y-0.5 ${
-                  darkMode
-                    ? "bg-zinc-900 border-zinc-800 hover:border-blue-500"
-                    : "bg-white border-slate-200 hover:border-blue-500 shadow-sm"
+              <select
+                value={activeTab}
+                onChange={(e) => {
+                  setSelectedPack(null);
+                  setActiveTab(e.target.value as TabType);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                  darkMode ? "bg-zinc-900 border-white/10" : "bg-white border-slate-200"
                 }`}
               >
-                <div
-                  className={`aspect-square w-full rounded-xl bg-gradient-to-br ${pack.coverGradient} mb-3.5 flex items-center justify-center text-white relative overflow-hidden`}
+                {navItems.map((n) => (
+                  <option key={n.label} value={n.label}>
+                    {n.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Pill Search Bar */}
+            <div className="relative flex-1 max-w-md">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs opacity-45">
+                🔍
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search VirtualPresets..."
+                className={`w-full pl-9 pr-4 py-2 rounded-full text-xs outline-none transition-all border ${
+                  darkMode
+                    ? "bg-white/[0.04] border-white/[0.06] text-zinc-100 placeholder:text-zinc-500 focus:bg-white/[0.07] focus:border-blue-500/60"
+                    : "bg-slate-100 border-transparent text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-blue-500"
+                }`}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] opacity-50 hover:opacity-100"
                 >
-                  <span className="text-3xl font-extrabold tracking-tight opacity-85 group-hover:scale-110 transition-transform">
-                    VP
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Right Credits & Account Pill */}
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => (user ? setPaymentModalOpen(true) : setAuthModalOpen(true))}
+                title="Top up credits"
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition-all ${
+                  darkMode
+                    ? "bg-white/[0.04] border-white/[0.08] text-zinc-200 hover:border-blue-500/60"
+                    : "bg-white border-slate-200 text-slate-800 hover:border-blue-500 shadow-2xs"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span className="font-mono tracking-tight">{credits} CREDITS</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
+                  +
+                </span>
+              </button>
+
+              {user ? (
+                <button
+                  onClick={() => setAccountOpen(true)}
+                  className={`flex items-center gap-2 p-1 pr-3 rounded-full border text-xs font-medium transition-colors ${
+                    darkMode
+                      ? "bg-white/[0.04] border-white/[0.08] hover:border-blue-500/60"
+                      : "bg-white border-slate-200 hover:border-blue-500 shadow-2xs"
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 text-white flex items-center justify-center font-bold text-[11px] uppercase">
+                    {user.email?.[0] ?? "P"}
+                  </div>
+                  <span className="hidden sm:inline max-w-[110px] truncate opacity-85">
+                    {user.email}
                   </span>
-                  <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-md bg-black/50 backdrop-blur-sm text-xs font-semibold">
-                    {pack.genre}
-                  </span>
-                </div>
-                <h3 className="font-bold text-base group-hover:text-blue-500 transition-colors">
-                  {pack.title}
-                </h3>
-                <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? "text-zinc-400" : "text-slate-500"}`}>
-                  {pack.description}
-                </p>
-              </div>
-            ))}
-          </section>
-        ) : (
-          <>
-            {/* FILTER BAR */}
-            <section className="space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+                </button>
+              ) : (
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  className="px-4 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-colors shadow-sm shadow-blue-600/25"
+                >
+                  Sign In
+                </button>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* MAIN CATALOG CANVAS */}
+        <main className="max-w-7xl w-full mx-auto px-4 sm:px-7 py-6 space-y-6">
+          {/* CHECKOUT BANNER */}
+          {checkoutBanner && (
+            <div
+              className={`rounded-xl border px-4 py-3 flex items-center justify-between text-xs font-medium ${
+                checkoutBanner === "success"
+                  ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
+                  : "bg-zinc-900 border-white/10 text-zinc-300"
+              }`}
+            >
+              <span>
+                {checkoutBanner === "success"
+                  ? "✓ Payment confirmed! Your credits have been added to your wallet."
+                  : "Checkout canceled — no charges were made."}
+              </span>
+              <button onClick={() => setCheckoutBanner(null)} className="opacity-70 hover:opacity-100">
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* FILTER DROPDOWNS & UPPERCASE `+ TAG` PILLS */}
+          {activeTab !== "Packs" && (
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <select
                     value={selectedEngine}
                     onChange={(e) => setSelectedEngine(e.target.value as SynthEngine)}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold outline-none focus:border-blue-600 ${
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium outline-none cursor-pointer transition-colors ${
                       darkMode
-                        ? "bg-zinc-900 border-zinc-800 text-zinc-200"
+                        ? "bg-white/[0.04] border-white/[0.07] text-zinc-200 hover:border-white/20"
                         : "bg-white border-slate-200 text-slate-700"
                     }`}
                   >
-                    <option value="All">Synth / Format: All</option>
-                    <option value="Analog Lab">Analog Lab (.labx)</option>
-                    <option value="Serum">Serum (.fxp / .SerumPreset)</option>
-                    <option value="Vital">Vital (.vital)</option>
-                    <option value="Omnisphere">Omnisphere (.prt_omn)</option>
-                    <option value="WAV">Audio Samples (.wav)</option>
+                    <option value="All">Synth: All</option>
+                    <option value="Serum">Serum</option>
+                    <option value="Analog Lab">Analog Lab</option>
+                    <option value="Vital">Vital</option>
+                    <option value="Omnisphere">Omnisphere</option>
+                    <option value="WAV">WAV Audio</option>
                   </select>
 
                   <select
                     value={selectedKey}
                     onChange={(e) => setSelectedKey(e.target.value)}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold outline-none focus:border-blue-600 ${
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium outline-none cursor-pointer transition-colors ${
                       darkMode
-                        ? "bg-zinc-900 border-zinc-800 text-zinc-200"
+                        ? "bg-white/[0.04] border-white/[0.07] text-zinc-200 hover:border-white/20"
                         : "bg-white border-slate-200 text-slate-700"
                     }`}
                   >
                     <option value="All">Key: Any</option>
-                    <option value="C min">C min</option>
-                    <option value="C# min">C# min</option>
-                    <option value="D# min">D# min</option>
-                    <option value="E min">E min</option>
-                    <option value="F min">F min</option>
-                    <option value="A min">A min</option>
+                    <option value="C min">C Minor</option>
+                    <option value="C# min">C# Minor</option>
+                    <option value="D# min">D# Minor</option>
+                    <option value="E min">E Minor</option>
+                    <option value="F min">F Minor</option>
+                    <option value="A min">A Minor</option>
                   </select>
+
+                  {(selectedEngine !== "All" ||
+                    selectedKey !== "All" ||
+                    selectedTag ||
+                    selectedPack) && (
+                    <button
+                      onClick={() => {
+                        setSelectedEngine("All");
+                        setSelectedKey("All");
+                        setSelectedTag(null);
+                        setSelectedPack(null);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
                 </div>
 
-                <div className="relative w-full sm:w-72">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search filenames, synths, tags..."
-                    className={`w-full px-3.5 py-1.5 rounded-lg border text-xs outline-none focus:border-blue-600 ${
-                      darkMode
-                        ? "bg-zinc-900 border-zinc-800 text-zinc-100 placeholder:text-zinc-500"
-                        : "bg-white border-slate-200 text-slate-900 placeholder:text-slate-400"
-                    }`}
-                  />
+                <div className="text-[11px] font-mono uppercase tracking-wider opacity-45">
+                  {filteredAssets.length} Sounds
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+              {/* Sleek `+ TAG` Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 {QUICK_TAGS.map((tag) => {
                   const active = selectedTag === tag;
                   return (
                     <button
                       key={tag}
                       onClick={() => setSelectedTag(active ? null : tag)}
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-mono uppercase tracking-wider whitespace-nowrap border transition-all ${
                         active
-                          ? "bg-blue-600 text-white"
+                          ? "bg-blue-600 border-blue-500 text-white font-semibold"
                           : darkMode
-                          ? "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-zinc-800"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          ? "bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:text-white hover:border-white/15"
+                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                       }`}
                     >
-                      {tag}
+                      {active ? `✓ ${tag}` : `+ ${tag}`}
                     </button>
                   );
                 })}
               </div>
             </section>
+          )}
 
-            {/* DATA TABLE */}
-            <section
-              className={`rounded-2xl border overflow-hidden ${
-                darkMode ? "border-zinc-800 bg-zinc-900/40" : "border-slate-200 bg-white shadow-sm"
-              }`}
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr
-                      className={`border-b text-[11px] uppercase tracking-wider font-semibold ${
-                        darkMode
-                          ? "border-zinc-800 text-zinc-500 bg-zinc-900/80"
-                          : "border-slate-200 text-slate-400 bg-slate-50"
-                      }`}
+          {/* HORIZONTAL PACK ARTWORK CAROUSEL (when browsing Presets/Samples) */}
+          {activeTab !== "Packs" && activeTab !== "My Library" && !selectedPack && (
+            <section className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
+                  Featured Sound Packs
+                </h2>
+                <button
+                  onClick={() => setActiveTab("Packs")}
+                  className="text-[11px] font-medium text-blue-400 hover:underline"
+                >
+                  View all packs →
+                </button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                {packs.slice(0, 4).map((pack) => (
+                  <div
+                    key={pack.id}
+                    onClick={() => setSelectedPack(pack)}
+                    className={`group relative rounded-2xl overflow-hidden cursor-pointer border transition-all hover:-translate-y-0.5 ${
+                      darkMode
+                        ? "border-white/[0.07] bg-zinc-900/60 hover:border-blue-500/60"
+                        : "border-slate-200 bg-white hover:border-blue-500 shadow-2xs"
+                    }`}
+                  >
+                    <div
+                      className={`aspect-[16/10] w-full bg-gradient-to-br ${pack.coverGradient} p-3.5 flex flex-col justify-between relative overflow-hidden`}
                     >
-                      <th className="py-2.5 pl-4 pr-2 w-14">Pack</th>
-                      <th className="py-2.5 px-2 w-10"></th>
-                      <th className="py-2.5 px-3">Filename</th>
-                      <th className="py-2.5 px-3 hidden md:table-cell">Waveform</th>
-                      <th className="py-2.5 px-3">Time</th>
-                      <th className="py-2.5 px-3">Key</th>
-                      <th className="py-2.5 px-3">BPM</th>
-                      <th className="py-2.5 pl-3 pr-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/80 text-sm">
-                    {filteredAssets.map((item) => {
-                      const isCurrent = activeAsset.id === item.id;
-                      const isRowPlaying = isCurrent && isPlayingPreview;
-                      const isOwned = ownedIds.includes(item.id);
-                      const bars = item.waveformBars.split(",").map(Number);
-
-                      return (
-                        <tr
-                          key={item.id}
-                          onClick={() => setActiveAsset(item)}
-                          className={`group transition-colors cursor-pointer ${
-                            isCurrent
-                              ? darkMode
-                                ? "bg-blue-950/30"
-                                : "bg-blue-50/70"
-                              : darkMode
-                              ? "hover:bg-zinc-800/40"
-                              : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <td className="py-2 pl-4 pr-2">
-                            <div
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const foundPack = packs.find((p) => p.id === item.packId);
-                                if (foundPack) setSelectedPack(foundPack);
-                              }}
-                              title={`View pack: ${item.packTitle}`}
-                              className={`w-9 h-9 rounded-md bg-gradient-to-br ${item.coverGradient} flex items-center justify-center text-white text-[10px] font-bold shadow-sm hover:scale-105 transition-transform`}
-                            >
-                              VP
-                            </div>
-                          </td>
-
-                          <td className="py-2 px-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleTogglePlay(item);
-                              }}
-                              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs transition-colors ${
-                                isRowPlaying
-                                  ? "bg-blue-600 text-white"
-                                  : darkMode
-                                  ? "bg-zinc-800 text-zinc-200 hover:bg-blue-600 hover:text-white"
-                                  : "bg-slate-100 text-slate-700 hover:bg-blue-600 hover:text-white"
-                              }`}
-                            >
-                              {isRowPlaying ? "■" : "▶"}
-                            </button>
-                          </td>
-
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-[13px] group-hover:text-blue-500 transition-colors">
-                                {item.filename}
-                              </span>
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                  item.engine === "WAV"
-                                    ? darkMode
-                                      ? "bg-zinc-800 text-zinc-300"
-                                      : "bg-slate-200 text-slate-700"
-                                    : "bg-blue-600/20 text-blue-400"
-                                }`}
-                              >
-                                {item.engine}
-                              </span>
-                              {item.previewPath && (
-                                <span
-                                  title="Real Serum audio preview loaded"
-                                  className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400"
-                                >
-                                  HQ Audio
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                              {item.tags.map((t) => (
-                                <span
-                                  key={t}
-                                  className={`text-[11px] ${
-                                    darkMode ? "text-zinc-500" : "text-slate-400"
-                                  }`}
-                                >
-                                  {t}
-                                </span>
-                              ))}
-                            </div>
-                          </td>
-
-                          <td className="py-2 px-3 hidden md:table-cell">
-                            <div className="flex items-center gap-[2px] h-6 w-36">
-                              {bars.map((height, idx) => (
-                                <div
-                                  key={idx}
-                                  style={{ height: `${height}%` }}
-                                  className={`w-1 rounded-full transition-colors ${
-                                    isRowPlaying
-                                      ? "bg-blue-500 animate-pulse"
-                                      : isCurrent
-                                      ? "bg-blue-500"
-                                      : darkMode
-                                      ? "bg-zinc-700 group-hover:bg-zinc-500"
-                                      : "bg-slate-300 group-hover:bg-blue-400"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                          </td>
-
-                          <td className="py-2 px-3 text-xs font-mono opacity-75">{item.duration}</td>
-                          <td className="py-2 px-3 text-xs font-medium opacity-80">{item.musicalKey}</td>
-                          <td className="py-2 px-3 text-xs font-mono opacity-75">
-                            {item.bpm ?? "--"}
-                          </td>
-
-                          <td className="py-2 pl-3 pr-4 text-right">
-                            <div className="inline-flex items-center gap-2">
-                              {activeTab === "My Library" && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    alert(
-                                      `Royalty-Free Commercial License Certificate generated for ${item.filename}`
-                                    );
-                                  }}
-                                  title="Download Commercial License PDF"
-                                  className={`px-2 py-1 rounded-lg border text-[11px] font-medium ${
-                                    darkMode
-                                      ? "border-zinc-700 text-zinc-300 hover:border-blue-500"
-                                      : "border-slate-200 text-slate-600 hover:border-blue-500"
-                                  }`}
-                                >
-                                  License
-                                </button>
-                              )}
-
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleUnlockAsset(item);
-                                }}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold inline-flex items-center gap-1 transition-colors ${
-                                  isOwned
-                                    ? darkMode
-                                      ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/60"
-                                      : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                                }`}
-                              >
-                                {isOwned ? "↓ Download" : `↓ ${item.credits} CR`}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {filteredAssets.length === 0 && (
-                  <div className="py-12 text-center text-sm opacity-60">
-                    {activeTab === "My Library" && !user
-                      ? "Sign in to view your saved presets and samples."
-                      : "No presets or samples match your current filters."}
+                      <div className="flex items-center justify-between">
+                        <span className="px-2 py-0.5 rounded-md bg-black/40 backdrop-blur-md text-[9px] font-mono uppercase tracking-wider text-white/90">
+                          {pack.genre}
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-white leading-snug drop-shadow-xs group-hover:translate-x-0.5 transition-transform">
+                          {pack.title}
+                        </h3>
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-white/75 mt-0.5">
+                          {pack.creator}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
             </section>
-          </>
-        )}
-      </main>
+          )}
+
+          {/* SELECTED PACK BANNER */}
+          {selectedPack && (
+            <section
+              className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 ${
+                darkMode ? "bg-white/[0.03] border-white/[0.08]" : "bg-blue-50/60 border-blue-100"
+              }`}
+            >
+              <div className="flex items-center gap-4">
+                <div
+                  className={`w-16 h-16 rounded-xl bg-gradient-to-br ${selectedPack.coverGradient} flex items-center justify-center text-white shadow-lg shrink-0 font-extrabold text-sm`}
+                >
+                  VP
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-blue-400">
+                    {selectedPack.genre}
+                  </span>
+                  <h1 className="text-lg font-bold tracking-tight">{selectedPack.title}</h1>
+                  <p className={`text-xs max-w-xl ${darkMode ? "text-zinc-400" : "text-slate-600"}`}>
+                    {selectedPack.description}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPack(null)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-medium shrink-0 ${
+                  darkMode
+                    ? "border-white/10 bg-white/[0.04] hover:bg-white/[0.08]"
+                    : "border-slate-200 bg-white hover:bg-slate-50"
+                }`}
+              >
+                ✕ Clear Pack
+              </button>
+            </section>
+          )}
+
+          {/* PACKS FULL GRID VIEW */}
+          {activeTab === "Packs" && !selectedPack ? (
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {packs.map((pack) => (
+                <div
+                  key={pack.id}
+                  onClick={() => setSelectedPack(pack)}
+                  className={`group rounded-2xl border p-4 cursor-pointer transition-all hover:-translate-y-0.5 ${
+                    darkMode
+                      ? "bg-white/[0.02] border-white/[0.07] hover:border-blue-500/60"
+                      : "bg-white border-slate-200 hover:border-blue-500 shadow-sm"
+                  }`}
+                >
+                  <div
+                    className={`aspect-square w-full rounded-xl bg-gradient-to-br ${pack.coverGradient} mb-3.5 flex items-center justify-center text-white relative overflow-hidden`}
+                  >
+                    <span className="text-3xl font-extrabold tracking-tight opacity-85 group-hover:scale-105 transition-transform">
+                      VP
+                    </span>
+                    <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-md bg-black/50 backdrop-blur-md text-[10px] font-mono uppercase tracking-wider font-semibold">
+                      {pack.genre}
+                    </span>
+                  </div>
+                  <h3 className="font-bold text-base group-hover:text-blue-400 transition-colors">
+                    {pack.title}
+                  </h3>
+                  <p className={`text-xs mt-1 line-clamp-2 ${darkMode ? "text-zinc-400" : "text-slate-500"}`}>
+                    {pack.description}
+                  </p>
+                </div>
+              ))}
+            </section>
+          ) : (
+            /* BORDERLESS STUDIO SOUND LIST */
+            <section className="space-y-1">
+              {filteredAssets.map((item) => {
+                const isCurrent = activeAsset.id === item.id;
+                const isRowPlaying = isCurrent && isPlayingPreview;
+                const isOwned = ownedIds.includes(item.id);
+                const bars = item.waveformBars.split(",").map(Number);
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => setActiveAsset(item)}
+                    className={`group flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
+                      isCurrent
+                        ? darkMode
+                          ? "bg-white/[0.06] ring-1 ring-blue-500/40"
+                          : "bg-blue-50/80 ring-1 ring-blue-500/30"
+                        : darkMode
+                        ? "hover:bg-white/[0.035]"
+                        : "hover:bg-white hover:shadow-2xs"
+                    }`}
+                  >
+                    {/* Left: Cover Art + Hover Play Overlay + Title/Subtext */}
+                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTogglePlay(item);
+                        }}
+                        className={`relative w-10 h-10 rounded-lg bg-gradient-to-br ${item.coverGradient} flex items-center justify-center text-white shrink-0 shadow-sm overflow-hidden`}
+                      >
+                        <span
+                          className={`text-[10px] font-extrabold transition-opacity ${
+                            isRowPlaying ? "opacity-0" : "group-hover:opacity-0"
+                          }`}
+                        >
+                          VP
+                        </span>
+                        <span
+                          className={`absolute inset-0 bg-black/50 backdrop-blur-[1px] flex items-center justify-center text-xs transition-opacity ${
+                            isRowPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                          }`}
+                        >
+                          {isRowPlaying ? "■" : "▶"}
+                        </span>
+                      </button>
+
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`font-semibold text-[13px] truncate transition-colors ${
+                              isCurrent ? "text-blue-400" : "group-hover:text-blue-400"
+                            }`}
+                          >
+                            {item.filename}
+                          </span>
+                          {item.previewPath && (
+                            <span
+                              title="Real Serum audio preview loaded"
+                              className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"
+                            />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider opacity-45 mt-0.5 truncate">
+                          <span>{item.packTitle}</span>
+                          <span>•</span>
+                          <span>{item.engine}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Center: Symmetrical Studio Waveform */}
+                    <div className="hidden lg:flex items-center justify-center gap-[2px] h-7 w-52 shrink-0">
+                      {bars.map((height, idx) => (
+                        <div
+                          key={idx}
+                          style={{ height: `${Math.max(14, height)}%` }}
+                          className={`w-[2px] rounded-full transition-colors ${
+                            isRowPlaying
+                              ? "bg-blue-400 animate-pulse"
+                              : isCurrent
+                              ? "bg-blue-500/80"
+                              : darkMode
+                              ? "bg-zinc-700/80 group-hover:bg-zinc-500"
+                              : "bg-slate-300 group-hover:bg-blue-400"
+                          }`}
+                        />
+                      ))}
+                    </div>
+
+                    {/* Metadata Columns: Time, BPM, Key, Engine Badge */}
+                    <div className="hidden sm:flex items-center gap-5 text-[11px] font-mono uppercase tracking-wider opacity-55 shrink-0">
+                      <span className="w-10 text-right">{item.duration}</span>
+                      <span className="w-16 text-right">
+                        {item.bpm ? `${item.bpm} BPM` : "--"}
+                      </span>
+                      <span className="w-16 text-right">{item.musicalKey}</span>
+                    </div>
+
+                    {/* Tag Chips */}
+                    <div className="hidden xl:flex items-center gap-1.5 w-36 justify-end shrink-0">
+                      {item.tags.slice(0, 2).map((t) => (
+                        <span
+                          key={t}
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${
+                            darkMode
+                              ? "bg-white/[0.04] text-zinc-400"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+
+                    {/* Right Actions */}
+                    <div className="flex items-center gap-2 shrink-0 pl-2">
+                      {activeTab === "My Library" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            alert(
+                              `Royalty-Free Commercial License Certificate generated for ${item.filename}`
+                            );
+                          }}
+                          className={`px-2 py-1 rounded-lg border text-[10px] font-mono uppercase ${
+                            darkMode
+                              ? "border-white/10 text-zinc-400 hover:text-white"
+                              : "border-slate-200 text-slate-600"
+                          }`}
+                        >
+                          License
+                        </button>
+                      )}
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUnlockAsset(item);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-all ${
+                          isOwned
+                            ? darkMode
+                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-xs"
+                        }`}
+                      >
+                        {isOwned ? "↓ Download" : `↓ ${item.credits} CR`}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredAssets.length === 0 && (
+                <div className="py-16 text-center text-sm opacity-50">
+                  {activeTab === "My Library" && !user
+                    ? "Sign in to view your saved presets and samples."
+                    : "No presets or samples match your current filters."}
+                </div>
+              )}
+            </section>
+          )}
+        </main>
+      </div>
 
       {/* BOTTOM DOCKED SYNTH DECK + EXPANDABLE MIDI PIANO ROLL */}
       <footer
-        className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-xl transition-colors ${
+        className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-2xl transition-colors ${
           darkMode
-            ? "bg-[#12141a]/95 border-zinc-800 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]"
+            ? "bg-[#0d0e12]/95 border-white/[0.08] shadow-[0_-12px_40px_rgba(0,0,0,0.65)]"
             : "bg-white/95 border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.06)]"
         }`}
       >
@@ -1646,11 +1768,10 @@ export default function ProdPresetsMarketplace() {
         {pianoRollOpen && (
           <div
             className={`border-b ${
-              darkMode ? "bg-[#0d0f14] border-zinc-800" : "bg-slate-50 border-slate-200"
+              darkMode ? "bg-[#090a0d] border-white/[0.07]" : "bg-slate-50 border-slate-200"
             }`}
           >
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
-              {/* Piano Roll Toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <button
@@ -1661,28 +1782,30 @@ export default function ProdPresetsMarketplace() {
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
                       isRollPlaying
                         ? "bg-rose-600 hover:bg-rose-700 text-white"
-                        : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : "bg-emerald-600 hover:bg-emerald-500 text-white"
                     }`}
                   >
                     {isRollPlaying ? "■ Stop Loop" : "▶ Play MIDI Loop"}
                   </button>
 
                   <div className="flex items-center gap-1.5 text-xs">
-                    <span className="opacity-60 font-medium">BPM:</span>
+                    <span className="opacity-50 font-mono text-[11px]">BPM</span>
                     <input
                       type="number"
                       min={60}
                       max={200}
                       value={rollBpm}
-                      onChange={(e) => setRollBpm(Math.min(200, Math.max(60, Number(e.target.value) || 128)))}
+                      onChange={(e) =>
+                        setRollBpm(Math.min(200, Math.max(60, Number(e.target.value) || 128)))
+                      }
                       className={`w-14 px-2 py-1 rounded-md border text-xs font-mono ${
-                        darkMode ? "bg-zinc-900 border-zinc-700" : "bg-white border-slate-300"
+                        darkMode ? "bg-zinc-900 border-white/10" : "bg-white border-slate-300"
                       }`}
                     />
                   </div>
 
                   <div className="flex items-center gap-1 text-xs">
-                    <span className="opacity-60 font-medium hidden sm:inline">Note Len:</span>
+                    <span className="opacity-50 font-mono text-[11px] hidden sm:inline">STEP</span>
                     {[
                       { label: "1/16", steps: 1 },
                       { label: "1/8", steps: 2 },
@@ -1695,7 +1818,7 @@ export default function ProdPresetsMarketplace() {
                           drawLengthSteps === len.steps
                             ? "bg-blue-600 text-white border-blue-500"
                             : darkMode
-                            ? "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white"
+                            ? "bg-zinc-900 border-white/[0.08] text-zinc-400 hover:text-white"
                             : "bg-white border-slate-200 text-slate-600"
                         }`}
                       >
@@ -1704,7 +1827,6 @@ export default function ProdPresetsMarketplace() {
                     ))}
                   </div>
 
-                  {/* Starter Patterns */}
                   <div className="hidden md:flex items-center gap-1 pl-1">
                     {Object.keys(STARTER_PATTERNS).map((name) => (
                       <button
@@ -1715,7 +1837,7 @@ export default function ProdPresetsMarketplace() {
                         }}
                         className={`px-2 py-1 rounded-md text-[11px] font-medium border ${
                           darkMode
-                            ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-blue-500"
+                            ? "bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:border-blue-500"
                             : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
                         }`}
                       >
@@ -1736,7 +1858,7 @@ export default function ProdPresetsMarketplace() {
                     onClick={() => midiFileInputRef.current?.click()}
                     className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
                       darkMode
-                        ? "bg-zinc-900 border-zinc-700 text-blue-400 hover:border-blue-500"
+                        ? "bg-white/[0.04] border-white/10 text-blue-400 hover:border-blue-500"
                         : "bg-white border-slate-300 text-blue-600 hover:border-blue-500"
                     }`}
                   >
@@ -1750,7 +1872,7 @@ export default function ProdPresetsMarketplace() {
                     }}
                     className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
                       darkMode
-                        ? "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-rose-400"
+                        ? "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:text-rose-400"
                         : "bg-white border-slate-200 text-slate-600 hover:text-rose-600"
                     }`}
                   >
@@ -1767,10 +1889,9 @@ export default function ProdPresetsMarketplace() {
                 </div>
               </div>
 
-              {/* 16-Step Piano Roll Grid */}
               <div
                 className={`rounded-xl border overflow-x-auto max-h-52 overflow-y-auto select-none ${
-                  darkMode ? "border-zinc-800 bg-zinc-950" : "border-slate-300 bg-white"
+                  darkMode ? "border-white/[0.08] bg-zinc-950" : "border-slate-300 bg-white"
                 }`}
               >
                 <div className="min-w-[680px]">
@@ -1778,26 +1899,24 @@ export default function ProdPresetsMarketplace() {
                     <div
                       key={row.note}
                       className={`flex items-stretch h-4 border-b last:border-b-0 ${
-                        darkMode ? "border-zinc-900" : "border-slate-100"
+                        darkMode ? "border-white/[0.04]" : "border-slate-100"
                       }`}
                     >
-                      {/* Left Pitch Label */}
                       <button
                         onClick={() => triggerTimedNote(row.note, 0.35)}
                         className={`w-12 shrink-0 px-1.5 text-[10px] font-mono font-bold text-left flex items-center justify-between border-r ${
                           row.isBlack
                             ? darkMode
-                              ? "bg-zinc-900 text-zinc-400 border-zinc-800"
+                              ? "bg-zinc-900 text-zinc-400 border-white/[0.06]"
                               : "bg-slate-200 text-slate-700 border-slate-300"
                             : darkMode
-                            ? "bg-zinc-800/80 text-zinc-200 border-zinc-800"
+                            ? "bg-zinc-800/80 text-zinc-200 border-white/[0.06]"
                             : "bg-slate-50 text-slate-800 border-slate-300"
                         }`}
                       >
                         <span>{row.note}</span>
                       </button>
 
-                      {/* 16 Step Cells */}
                       <div className="flex-1 grid grid-cols-16 relative">
                         {Array.from({ length: 16 }).map((_, stepIdx) => {
                           const startingNote = rollNotes.find(
@@ -1819,10 +1938,10 @@ export default function ProdPresetsMarketplace() {
                               className={`relative border-r cursor-pointer transition-colors ${
                                 isBeatStart
                                   ? darkMode
-                                    ? "border-zinc-700"
+                                    ? "border-white/15"
                                     : "border-slate-300"
                                   : darkMode
-                                  ? "border-zinc-900"
+                                  ? "border-white/[0.04]"
                                   : "border-slate-100"
                               } ${
                                 isPlayhead
@@ -1841,7 +1960,7 @@ export default function ProdPresetsMarketplace() {
                                   style={{
                                     width: `calc(${startingNote.durationSteps * 100}% - 2px)`,
                                   }}
-                                  className="absolute inset-y-[1px] left-[1px] z-10 rounded-[3px] bg-blue-600 hover:bg-blue-500 shadow-xs flex items-center px-1 text-[8px] font-mono text-white font-bold pointer-events-none"
+                                  className="absolute inset-y-[1px] left-[1px] z-10 rounded-[3px] bg-blue-500 hover:bg-blue-400 shadow-xs flex items-center px-1 text-[8px] font-mono text-white font-bold pointer-events-none"
                                 >
                                   {startingNote.durationSteps > 1 ? row.note : ""}
                                 </div>
@@ -1862,40 +1981,46 @@ export default function ProdPresetsMarketplace() {
         {/* MAIN SYNTH DECK BAR */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
-            <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[260px]">
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white">
-                    {activeAsset.engine}
-                  </span>
-                  <span className="text-[11px] font-mono opacity-60">{activeAsset.extension}</span>
-                  {activeAsset.previewPath && (
-                    <span
-                      className={`text-[10px] font-semibold ${
-                        sampleError
-                          ? "text-rose-400"
-                          : isSampleReady
-                          ? "text-emerald-400"
-                          : "text-amber-400 animate-pulse"
-                      }`}
-                    >
-                      {sampleError
-                        ? `✕ ${sampleError}`
-                        : isSampleReady
-                        ? "● Ready"
-                        : "○ Loading..."}
-                    </span>
-                  )}
+            <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[265px]">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className={`w-9 h-9 rounded-lg bg-gradient-to-br ${activeAsset.coverGradient} flex items-center justify-center text-white text-[10px] font-extrabold shrink-0`}
+                >
+                  VP
                 </div>
-                <div className="text-xs font-bold truncate max-w-[210px] mt-0.5">
-                  {activeAsset.filename}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-blue-400 font-semibold">
+                      {activeAsset.engine}
+                    </span>
+                    {activeAsset.previewPath && (
+                      <span
+                        className={`text-[10px] font-mono ${
+                          sampleError
+                            ? "text-rose-400"
+                            : isSampleReady
+                            ? "text-emerald-400"
+                            : "text-amber-400 animate-pulse"
+                        }`}
+                      >
+                        {sampleError
+                          ? `• ${sampleError}`
+                          : isSampleReady
+                          ? "• Ready"
+                          : "• Loading..."}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs font-bold truncate max-w-[185px] mt-0.5">
+                    {activeAsset.filename}
+                  </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => handleTogglePlay(activeAsset)}
-                  className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold transition-colors"
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold transition-colors"
                 >
                   {isPlayingPreview ? "■ Stop" : "▶ Play"}
                 </button>
@@ -1905,7 +2030,7 @@ export default function ProdPresetsMarketplace() {
                     pianoRollOpen
                       ? "bg-blue-600/20 border-blue-500 text-blue-400"
                       : darkMode
-                      ? "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-blue-500"
+                      ? "border-white/10 bg-white/[0.04] text-zinc-200 hover:border-blue-500"
                       : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-500"
                   }`}
                 >
@@ -1916,7 +2041,7 @@ export default function ProdPresetsMarketplace() {
                   title="Reset FX Knobs"
                   className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition-colors ${
                     darkMode
-                      ? "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                      ? "border-white/10 text-zinc-400 hover:text-white hover:bg-white/[0.05]"
                       : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
                   }`}
                 >
@@ -1925,10 +2050,10 @@ export default function ProdPresetsMarketplace() {
                 <button
                   onClick={() => setDockMinimized(!dockMinimized)}
                   className={`lg:hidden px-2 py-1.5 rounded-lg border text-[11px] font-medium ${
-                    darkMode ? "border-zinc-700 text-zinc-300" : "border-slate-200 text-slate-600"
+                    darkMode ? "border-white/10 text-zinc-300" : "border-slate-200 text-slate-600"
                   }`}
                 >
-                  {dockMinimized ? "Show Synth" : "Hide"}
+                  {dockMinimized ? "Show" : "Hide"}
                 </button>
               </div>
             </div>
@@ -1937,7 +2062,7 @@ export default function ProdPresetsMarketplace() {
               <>
                 <div
                   className={`flex items-center justify-center gap-3.5 sm:gap-4 px-3.5 py-1.5 rounded-xl border ${
-                    darkMode ? "bg-zinc-950/70 border-zinc-800" : "bg-slate-50 border-slate-200"
+                    darkMode ? "bg-white/[0.025] border-white/[0.07]" : "bg-slate-50 border-slate-200"
                   }`}
                 >
                   <RotaryKnob label="Cutoff" value={cutoff} onChange={setCutoff} darkMode={darkMode} />
@@ -2005,12 +2130,14 @@ export default function ProdPresetsMarketplace() {
         </div>
       </footer>
 
-      {/* AUTH MODAL (SIGN IN / CREATE ACCOUNT) */}
+      {/* AUTH MODAL */}
       {authModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div
             className={`w-full max-w-sm rounded-2xl border p-6 space-y-4 shadow-2xl ${
-              darkMode ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-900"
+              darkMode
+                ? "bg-[#111216] border-white/10 text-zinc-100"
+                : "bg-white border-slate-200 text-slate-900"
             }`}
           >
             <div className="flex items-center justify-between">
@@ -2022,7 +2149,7 @@ export default function ProdPresetsMarketplace() {
               </div>
               <button
                 onClick={() => setAuthModalOpen(false)}
-                className="px-2.5 py-1 rounded-lg hover:bg-zinc-800/40 text-sm"
+                className="px-2.5 py-1 rounded-lg hover:bg-white/10 text-sm"
               >
                 ✕
               </button>
@@ -2038,7 +2165,7 @@ export default function ProdPresetsMarketplace() {
                   onChange={(e) => setAuthEmail(e.target.value)}
                   placeholder="you@studio.com"
                   className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
-                    darkMode ? "bg-zinc-950 border-zinc-800" : "bg-slate-50 border-slate-200"
+                    darkMode ? "bg-zinc-950 border-white/10" : "bg-slate-50 border-slate-200"
                   }`}
                 />
               </div>
@@ -2052,7 +2179,7 @@ export default function ProdPresetsMarketplace() {
                   onChange={(e) => setAuthPassword(e.target.value)}
                   placeholder="••••••••"
                   className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
-                    darkMode ? "bg-zinc-950 border-zinc-800" : "bg-slate-50 border-slate-200"
+                    darkMode ? "bg-zinc-950 border-white/10" : "bg-slate-50 border-slate-200"
                   }`}
                 />
               </div>
@@ -2063,7 +2190,7 @@ export default function ProdPresetsMarketplace() {
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition-colors"
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold transition-colors"
               >
                 {authLoading
                   ? "Please wait..."
@@ -2083,7 +2210,7 @@ export default function ProdPresetsMarketplace() {
                       setAuthMode("signup");
                       setAuthError(null);
                     }}
-                    className="text-blue-500 font-semibold hover:underline"
+                    className="text-blue-400 font-semibold hover:underline"
                   >
                     Create an account
                   </button>
@@ -2097,7 +2224,7 @@ export default function ProdPresetsMarketplace() {
                       setAuthMode("signin");
                       setAuthError(null);
                     }}
-                    className="text-blue-500 font-semibold hover:underline"
+                    className="text-blue-400 font-semibold hover:underline"
                   >
                     Sign in
                   </button>
@@ -2110,10 +2237,12 @@ export default function ProdPresetsMarketplace() {
 
       {/* STRIPE CREDIT CHECKOUT MODAL */}
       {paymentModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div
             className={`w-full max-w-md rounded-2xl border p-6 space-y-5 shadow-2xl ${
-              darkMode ? "bg-zinc-900 border-zinc-800 text-zinc-100" : "bg-white border-slate-200 text-slate-900"
+              darkMode
+                ? "bg-[#111216] border-white/10 text-zinc-100"
+                : "bg-white border-slate-200 text-slate-900"
             }`}
           >
             <div className="flex items-center justify-between">
@@ -2123,7 +2252,7 @@ export default function ProdPresetsMarketplace() {
               </div>
               <button
                 onClick={() => setPaymentModalOpen(false)}
-                className="px-2.5 py-1 rounded-lg hover:bg-zinc-800/40 text-sm"
+                className="px-2.5 py-1 rounded-lg hover:bg-white/10 text-sm"
               >
                 ✕
               </button>
@@ -2142,13 +2271,13 @@ export default function ProdPresetsMarketplace() {
                     onClick={() => setSelectedBundleCredits(tier.cr)}
                     className={`p-3 rounded-xl border text-left transition-all ${
                       selected
-                        ? "border-blue-600 bg-blue-600/10 ring-1 ring-blue-600"
+                        ? "border-blue-500 bg-blue-600/15 ring-1 ring-blue-500"
                         : darkMode
-                        ? "border-zinc-800 bg-zinc-950/60 hover:border-zinc-700"
+                        ? "border-white/[0.08] bg-zinc-950/60 hover:border-white/20"
                         : "border-slate-200 bg-slate-50 hover:border-slate-300"
                     }`}
                   >
-                    <div className="text-[10px] font-bold uppercase text-blue-500">{tier.tag}</div>
+                    <div className="text-[10px] font-bold uppercase text-blue-400">{tier.tag}</div>
                     <div className="text-base font-extrabold mt-0.5">{tier.cr} CR</div>
                     <div className="text-xs opacity-75 font-medium">{tier.price}</div>
                   </button>
@@ -2176,7 +2305,7 @@ export default function ProdPresetsMarketplace() {
                         active
                           ? "border-blue-600 bg-blue-600 text-white"
                           : darkMode
-                          ? "border-zinc-800 bg-zinc-950/60 text-zinc-300 hover:border-zinc-700"
+                          ? "border-white/[0.08] bg-zinc-950/60 text-zinc-300 hover:border-white/20"
                           : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
@@ -2190,7 +2319,7 @@ export default function ProdPresetsMarketplace() {
             <button
               onClick={handleCompletePayment}
               disabled={checkoutLoading}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors"
             >
               {checkoutLoading
                 ? "Redirecting to Stripe..."
@@ -2202,14 +2331,14 @@ export default function ProdPresetsMarketplace() {
 
       {/* USER ACCOUNT DRAWER */}
       {accountOpen && user && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-end">
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex justify-end">
           <div
             className={`w-full max-w-md h-full p-6 flex flex-col justify-between overflow-y-auto ${
-              darkMode ? "bg-zinc-900 text-zinc-100" : "bg-white text-slate-900"
+              darkMode ? "bg-[#111216] text-zinc-100" : "bg-white text-slate-900"
             }`}
           >
             <div className="space-y-6">
-              <div className="flex items-center justify-between border-b pb-4 border-slate-200 dark:border-zinc-800">
+              <div className="flex items-center justify-between border-b pb-4 border-white/10">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold uppercase">
                     {user.email?.[0] ?? "P"}
@@ -2221,13 +2350,13 @@ export default function ProdPresetsMarketplace() {
                 </div>
                 <button
                   onClick={() => setAccountOpen(false)}
-                  className="px-2.5 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800 text-sm"
+                  className="px-2.5 py-1 rounded-lg hover:bg-white/10 text-sm"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="p-4 rounded-xl bg-blue-600 text-white space-y-2">
+              <div className="p-4 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600 text-white space-y-2">
                 <div className="text-xs uppercase tracking-wider opacity-80 font-semibold">
                   Available Balance
                 </div>
@@ -2247,7 +2376,7 @@ export default function ProdPresetsMarketplace() {
                       setAccountOpen(false);
                       setActiveTab("My Library");
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800"
+                    className="px-3 py-1.5 rounded-lg bg-black/25 text-white text-xs font-semibold hover:bg-black/35"
                   >
                     Open My Library ({ownedIds.length})
                   </button>
@@ -2266,7 +2395,9 @@ export default function ProdPresetsMarketplace() {
                       <div
                         key={i}
                         className={`p-3 rounded-lg border text-xs flex items-center justify-between ${
-                          darkMode ? "border-zinc-800 bg-zinc-950/50" : "border-slate-100 bg-slate-50"
+                          darkMode
+                            ? "border-white/[0.07] bg-white/[0.02]"
+                            : "border-slate-100 bg-slate-50"
                         }`}
                       >
                         <div>
@@ -2275,7 +2406,7 @@ export default function ProdPresetsMarketplace() {
                         </div>
                         <span
                           className={`font-mono font-bold ${
-                            entry.delta > 0 ? "text-emerald-500" : "text-blue-500"
+                            entry.delta > 0 ? "text-emerald-400" : "text-blue-400"
                           }`}
                         >
                           {entry.delta > 0 ? `+${entry.delta}` : entry.delta} CR
@@ -2287,11 +2418,11 @@ export default function ProdPresetsMarketplace() {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+            <div className="pt-4 border-t border-white/10 flex items-center justify-between text-xs">
               <span className="opacity-60">100% Royalty-Free Licensing</span>
               <button
                 onClick={handleSignOut}
-                className="px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-rose-500 text-rose-400 font-semibold"
+                className="px-3 py-1.5 rounded-lg border border-white/10 hover:border-rose-500 text-rose-400 font-semibold"
               >
                 Sign Out
               </button>
