@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import * as Tone from "tone";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase";
 
@@ -11,6 +12,7 @@ interface AudioAsset {
   id: string;
   filename: string;
   storagePath?: string;
+  previewPath?: string | null;
   packId: string;
   packTitle: string;
   coverGradient: string;
@@ -33,6 +35,13 @@ interface Pack {
   coverGradient: string;
   description: string;
   genre: string;
+}
+
+interface MidiRollNote {
+  id: string;
+  note: string; // e.g., "C3", "G3"
+  step: number; // 0..15 (16th notes in 1 bar)
+  durationSteps: number; // 1..8
 }
 
 const FALLBACK_PACKS: Pack[] = [
@@ -185,25 +194,186 @@ const QUICK_TAGS = [
   "ambient",
 ];
 
+// Mapped around C3 so C3 plays the exact unshifted Serum bounce
 const PIANO_NOTES = [
-  { note: "C4", keyBind: "a", freq: 261.63, isBlack: false },
-  { note: "C#4", keyBind: "w", freq: 277.18, isBlack: true },
-  { note: "D4", keyBind: "s", freq: 293.66, isBlack: false },
-  { note: "D#4", keyBind: "e", freq: 311.13, isBlack: true },
-  { note: "E4", keyBind: "d", freq: 329.63, isBlack: false },
-  { note: "F4", keyBind: "f", freq: 349.23, isBlack: false },
-  { note: "F#4", keyBind: "t", freq: 369.99, isBlack: true },
-  { note: "G4", keyBind: "g", freq: 392.0, isBlack: false },
-  { note: "G#4", keyBind: "y", freq: 415.3, isBlack: true },
-  { note: "A4", keyBind: "h", freq: 440.0, isBlack: false },
-  { note: "A#4", keyBind: "u", freq: 466.16, isBlack: true },
-  { note: "B4", keyBind: "j", freq: 493.88, isBlack: false },
-  { note: "C5", keyBind: "k", freq: 523.25, isBlack: false },
-  { note: "C#5", keyBind: "o", freq: 554.37, isBlack: true },
-  { note: "D5", keyBind: "l", freq: 587.33, isBlack: false },
-  { note: "D#5", keyBind: "p", freq: 622.25, isBlack: true },
-  { note: "E5", keyBind: ";", freq: 659.25, isBlack: false },
+  { note: "C3", keyBind: "a", freq: 130.81, isBlack: false, midiNum: 48 },
+  { note: "C#3", keyBind: "w", freq: 138.59, isBlack: true, midiNum: 49 },
+  { note: "D3", keyBind: "s", freq: 146.83, isBlack: false, midiNum: 50 },
+  { note: "D#3", keyBind: "e", freq: 155.56, isBlack: true, midiNum: 51 },
+  { note: "E3", keyBind: "d", freq: 164.81, isBlack: false, midiNum: 52 },
+  { note: "F3", keyBind: "f", freq: 174.61, isBlack: false, midiNum: 53 },
+  { note: "F#3", keyBind: "t", freq: 185.0, isBlack: true, midiNum: 54 },
+  { note: "G3", keyBind: "g", freq: 196.0, isBlack: false, midiNum: 55 },
+  { note: "G#3", keyBind: "y", freq: 207.65, isBlack: true, midiNum: 56 },
+  { note: "A3", keyBind: "h", freq: 220.0, isBlack: false, midiNum: 57 },
+  { note: "A#3", keyBind: "u", freq: 233.08, isBlack: true, midiNum: 58 },
+  { note: "B3", keyBind: "j", freq: 246.94, isBlack: false, midiNum: 59 },
+  { note: "C4", keyBind: "k", freq: 261.63, isBlack: false, midiNum: 60 },
+  { note: "C#4", keyBind: "o", freq: 277.18, isBlack: true, midiNum: 61 },
+  { note: "D4", keyBind: "l", freq: 293.66, isBlack: false, midiNum: 62 },
+  { note: "D#4", keyBind: "p", freq: 311.13, isBlack: true, midiNum: 63 },
+  { note: "E4", keyBind: ";", freq: 329.63, isBlack: false, midiNum: 64 },
 ];
+
+// Top-to-bottom rows for the Piano Roll grid (E4 at top down to C3 at bottom)
+const ROLL_ROWS = [...PIANO_NOTES].reverse();
+
+const STARTER_PATTERNS: Record<string, MidiRollNote[]> = {
+  "EDM Chords": [
+    { id: "c1", note: "C3", step: 0, durationSteps: 4 },
+    { id: "c2", note: "G3", step: 0, durationSteps: 4 },
+    { id: "c3", note: "D#4", step: 0, durationSteps: 4 },
+    { id: "c4", note: "G#3", step: 6, durationSteps: 4 },
+    { id: "c5", note: "C4", step: 6, durationSteps: 4 },
+    { id: "c6", note: "D#4", step: 6, durationSteps: 4 },
+    { id: "c7", note: "A#3", step: 12, durationSteps: 4 },
+    { id: "c8", note: "D4", step: 12, durationSteps: 4 },
+  ],
+  "Blissful Arp": [
+    { id: "a1", note: "C3", step: 0, durationSteps: 2 },
+    { id: "a2", note: "G3", step: 2, durationSteps: 2 },
+    { id: "a3", note: "D#4", step: 4, durationSteps: 2 },
+    { id: "a4", note: "D4", step: 6, durationSteps: 2 },
+    { id: "a5", note: "C4", step: 8, durationSteps: 2 },
+    { id: "a6", note: "G3", step: 10, durationSteps: 2 },
+    { id: "a7", note: "A#3", step: 12, durationSteps: 2 },
+    { id: "a8", note: "D4", step: 14, durationSteps: 2 },
+  ],
+  "Sub Groove": [
+    { id: "b1", note: "C3", step: 0, durationSteps: 3 },
+    { id: "b2", note: "C3", step: 4, durationSteps: 2 },
+    { id: "b3", note: "D#3", step: 6, durationSteps: 2 },
+    { id: "b4", note: "G3", step: 8, durationSteps: 3 },
+    { id: "b5", note: "F3", step: 12, durationSteps: 2 },
+    { id: "b6", note: "D#3", step: 14, durationSteps: 2 },
+  ],
+};
+
+// Lightweight Standard MIDI File (.mid) parser for browser file imports
+function parseMidiFileToRollNotes(buffer: ArrayBuffer): MidiRollNote[] {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 14) return [];
+
+  const readUint32 = (offset: number) =>
+    ((bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      bytes[offset + 3]) >>>
+    0;
+
+  const readUint16 = (offset: number) => (bytes[offset] << 8) | bytes[offset + 1];
+
+  const headerId = String.fromCharCode(...bytes.slice(0, 4));
+  if (headerId !== "MThd") return [];
+
+  const headerLength = readUint32(4);
+  const ticksPerQuarter = readUint16(12) || 480;
+  const ticksPer16th = ticksPerQuarter / 4;
+
+  let cursor = 8 + headerLength;
+  const rawEvents: { tick: number; noteNum: number; on: boolean }[] = [];
+
+  while (cursor + 8 <= bytes.length) {
+    const chunkId = String.fromCharCode(...bytes.slice(cursor, cursor + 4));
+    const chunkLen = readUint32(cursor + 4);
+    const trackStart = cursor + 8;
+    const trackEnd = Math.min(bytes.length, trackStart + chunkLen);
+
+    if (chunkId === "MTrk") {
+      let pos = trackStart;
+      let absTick = 0;
+      let runningStatus = 0;
+
+      while (pos < trackEnd) {
+        // Read variable-length delta time
+        let delta = 0;
+        while (pos < trackEnd) {
+          const b = bytes[pos++];
+          delta = (delta << 7) | (b & 0x7f);
+          if ((b & 0x80) === 0) break;
+        }
+        absTick += delta;
+        if (pos >= trackEnd) break;
+
+        let status = bytes[pos];
+        if (status < 0x80) {
+          status = runningStatus;
+        } else {
+          pos++;
+          if (status < 0xf0) runningStatus = status;
+        }
+
+        const eventType = status & 0xf0;
+        if (eventType === 0x90 || eventType === 0x80) {
+          const noteNum = bytes[pos++];
+          const velocity = bytes[pos++];
+          const isNoteOn = eventType === 0x90 && velocity > 0;
+          rawEvents.push({ tick: absTick, noteNum, on: isNoteOn });
+        } else if (eventType === 0xa0 || eventType === 0xb0 || eventType === 0xe0) {
+          pos += 2;
+        } else if (eventType === 0xc0 || eventType === 0xd0) {
+          pos += 1;
+        } else if (status === 0xff) {
+          pos++; // meta type
+          let metaLen = 0;
+          while (pos < trackEnd) {
+            const b = bytes[pos++];
+            metaLen = (metaLen << 7) | (b & 0x7f);
+            if ((b & 0x80) === 0) break;
+          }
+          pos += metaLen;
+        } else if (status === 0xf0 || status === 0xf7) {
+          let sysexLen = 0;
+          while (pos < trackEnd) {
+            const b = bytes[pos++];
+            sysexLen = (sysexLen << 7) | (b & 0x7f);
+            if ((b & 0x80) === 0) break;
+          }
+          pos += sysexLen;
+        } else {
+          break;
+        }
+      }
+    }
+
+    cursor = trackEnd;
+  }
+
+  rawEvents.sort((a, b) => a.tick - b.tick);
+
+  const activeStarts = new Map<number, number>();
+  const parsed: MidiRollNote[] = [];
+
+  for (const ev of rawEvents) {
+    // Fold any octave into our C3 (48) .. E4 (64) playable range
+    let folded = ev.noteNum;
+    while (folded < 48) folded += 12;
+    while (folded > 64) folded -= 12;
+
+    const matchedKey = PIANO_NOTES.find((k) => k.midiNum === folded);
+    if (!matchedKey) continue;
+
+    if (ev.on) {
+      activeStarts.set(ev.noteNum, ev.tick);
+    } else if (activeStarts.has(ev.noteNum)) {
+      const startTick = activeStarts.get(ev.noteNum)!;
+      activeStarts.delete(ev.noteNum);
+
+      const startStep = Math.round(startTick / ticksPer16th) % 16;
+      const rawSteps = Math.max(1, Math.round((ev.tick - startTick) / ticksPer16th));
+      const durationSteps = Math.min(16 - startStep, Math.min(8, rawSteps));
+
+      parsed.push({
+        id: `imp-${parsed.length}-${startStep}-${matchedKey.note}`,
+        note: matchedKey.note,
+        step: startStep,
+        durationSteps,
+      });
+    }
+  }
+
+  return parsed.slice(0, 64);
+}
 
 function RotaryKnob({
   label,
@@ -328,19 +498,46 @@ export default function ProdPresetsMarketplace() {
   const [checkoutBanner, setCheckoutBanner] = useState<"success" | "canceled" | null>(null);
   const [creditHistory, setCreditHistory] = useState<{ label: string; delta: number; date: string }[]>([]);
 
-  // Synth Deck & Polyphonic Multi-Key State
+  // Synth Deck, Tone.Sampler & Polyphonic Multi-Key State
   const [activeAsset, setActiveAsset] = useState<AudioAsset>(FALLBACK_ASSETS[0]);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [isSampleReady, setIsSampleReady] = useState(false);
   const [activeNotes, setActiveNotes] = useState<string[]>([]);
   const [dockMinimized, setDockMinimized] = useState(false);
 
-  const [cutoff, setCutoff] = useState(72);
-  const [resonance, setResonance] = useState(30);
-  const [envelope, setEnvelope] = useState(45);
-  const [spaceMix, setSpaceMix] = useState(35);
-  const [macro1, setMacro1] = useState(60);
+  // Interactive MIDI Piano Roll Sequencer State
+  const [pianoRollOpen, setPianoRollOpen] = useState(false);
+  const [rollNotes, setRollNotes] = useState<MidiRollNote[]>(STARTER_PATTERNS["EDM Chords"]);
+  const [drawLengthSteps, setDrawLengthSteps] = useState<number>(2);
+  const [rollBpm, setRollBpm] = useState<number>(128);
+  const [isRollPlaying, setIsRollPlaying] = useState(false);
+  const [currentStep, setCurrentStep] = useState<number | null>(null);
+  const [importedMidiName, setImportedMidiName] = useState<string | null>(null);
+  const midiFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [cutoff, setCutoff] = useState(100);
+  const [resonance, setResonance] = useState(15);
+  const [envelope, setEnvelope] = useState(35);
+  const [spaceMix, setSpaceMix] = useState(15);
+  const [macro1, setMacro1] = useState(50);
+
+  const samplerRef = useRef<Tone.Sampler | null>(null);
+  const filterRef = useRef<Tone.Filter | null>(null);
+  const reverbRef = useRef<Tone.Reverb | null>(null);
+  const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoPlayAfterLoadRef = useRef<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const getPreviewUrl = useCallback((previewPath?: string | null) => {
+    if (!previewPath) return null;
+    const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!baseUrl) return null;
+    const encodedPath = previewPath
+      .split("/")
+      .map(encodeURIComponent)
+      .join("/");
+    return `${baseUrl}/storage/v1/object/public/previews/${encodedPath}`;
+  }, []);
 
   // Load live packs & presets from Supabase
   useEffect(() => {
@@ -371,6 +568,7 @@ export default function ProdPresetsMarketplace() {
           id: row.id,
           filename: row.filename,
           storagePath: row.storage_path,
+          previewPath: row.preview_path ?? null,
           packId: row.pack_id ?? "blissful-edm-sounds",
           packTitle: parentPack?.title ?? "Blissful EDM Sounds",
           coverGradient: parentPack?.coverGradient ?? "from-cyan-500 via-blue-600 to-indigo-700",
@@ -378,7 +576,7 @@ export default function ProdPresetsMarketplace() {
           extension: row.extension || ".SerumPreset",
           category: row.category || "Synth",
           tags: Array.isArray(row.tags) ? row.tags : ["serum"],
-          duration: row.duration || "0:08",
+          duration: row.duration || "0:04",
           musicalKey: row.musical_key || "C min",
           bpm: row.bpm ?? 128,
           credits: row.credits ?? 2,
@@ -398,6 +596,82 @@ export default function ProdPresetsMarketplace() {
 
     loadCatalog();
   }, [supabase]);
+
+  // Sync sequencer BPM when switching to a preset that has a tagged BPM
+  useEffect(() => {
+    if (activeAsset.bpm && activeAsset.bpm >= 60 && activeAsset.bpm <= 200) {
+      setRollBpm(activeAsset.bpm);
+    }
+  }, [activeAsset.id, activeAsset.bpm]);
+
+  // Load real .m4a audio sample into Tone.Sampler whenever activeAsset changes
+  useEffect(() => {
+    setIsSampleReady(false);
+
+    samplerRef.current?.releaseAll();
+    samplerRef.current?.dispose();
+    samplerRef.current = null;
+
+    const previewUrl = getPreviewUrl(activeAsset.previewPath);
+    if (!previewUrl) return;
+
+    if (!filterRef.current) {
+      filterRef.current = new Tone.Filter({
+        type: "lowpass",
+        frequency: 18000,
+        Q: 1,
+      });
+    }
+    if (!reverbRef.current) {
+      reverbRef.current = new Tone.Reverb({
+        decay: 2.2,
+        wet: 0.1,
+      }).toDestination();
+      filterRef.current.connect(reverbRef.current);
+    }
+
+    const sampler = new Tone.Sampler({
+      urls: {
+        C3: previewUrl,
+      },
+      release: 0.35 + (envelope / 100) * 1.2,
+      onload: () => {
+        setIsSampleReady(true);
+        if (autoPlayAfterLoadRef.current) {
+          autoPlayAfterLoadRef.current = false;
+          sampler.triggerAttackRelease("C3", 3.5);
+          setIsPlayingPreview(true);
+          if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
+          previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), 3500);
+        }
+      },
+    }).connect(filterRef.current);
+
+    samplerRef.current = sampler;
+
+    return () => {
+      sampler.releaseAll();
+      sampler.dispose();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAsset.id, activeAsset.previewPath, getPreviewUrl]);
+
+  // Live update Tone.js Filter, Reverb & Release from Rotary Knobs
+  useEffect(() => {
+    if (filterRef.current) {
+      const minFreq = 180;
+      const maxFreq = 18000;
+      const mappedFreq = minFreq * Math.pow(maxFreq / minFreq, cutoff / 100);
+      filterRef.current.frequency.rampTo(mappedFreq, 0.05);
+      filterRef.current.Q.rampTo(0.7 + (resonance / 100) * 10, 0.05);
+    }
+    if (reverbRef.current) {
+      reverbRef.current.wet.rampTo((spaceMix / 100) * 0.65, 0.05);
+    }
+    if (samplerRef.current) {
+      samplerRef.current.release = 0.2 + (envelope / 100) * 1.6;
+    }
+  }, [cutoff, resonance, envelope, spaceMix]);
 
   const loadUserWallet = useCallback(
     async (userId: string) => {
@@ -502,14 +776,14 @@ export default function ProdPresetsMarketplace() {
   };
 
   const resetKnobs = () => {
-    setCutoff(72);
-    setResonance(30);
-    setEnvelope(45);
-    setSpaceMix(35);
-    setMacro1(60);
+    setCutoff(100);
+    setResonance(15);
+    setEnvelope(35);
+    setSpaceMix(15);
+    setMacro1(50);
   };
 
-  const triggerSynthNote = useCallback(
+  const triggerFallbackOsc = useCallback(
     (freq: number, durationSec = 0.65) => {
       try {
         if (!audioCtxRef.current) {
@@ -566,24 +840,152 @@ export default function ProdPresetsMarketplace() {
     [activeAsset.engine, cutoff, envelope, macro1, resonance, spaceMix]
   );
 
+  // Trigger a timed note (used by Piano Roll playback)
+  const triggerTimedNote = useCallback(
+    async (noteName: string, durationSec: number) => {
+      const found = PIANO_NOTES.find((n) => n.note === noteName);
+      if (!found) return;
+
+      if (activeAsset.previewPath) {
+        await Tone.start();
+        if (samplerRef.current && isSampleReady) {
+          samplerRef.current.triggerAttackRelease(noteName, durationSec);
+        }
+      } else {
+        triggerFallbackOsc(found.freq, durationSec);
+      }
+    },
+    [activeAsset.previewPath, isSampleReady, triggerFallbackOsc]
+  );
+
+  // Piano Roll 16-step loop playback engine
+  useEffect(() => {
+    if (!isRollPlaying) {
+      setCurrentStep(null);
+      return;
+    }
+
+    let stepIndex = 0;
+    const stepMs = (60 / rollBpm / 4) * 1000;
+
+    const tick = () => {
+      const activeStep = stepIndex % 16;
+      setCurrentStep(activeStep);
+
+      const notesAtStep = rollNotes.filter((n) => n.step === activeStep);
+      const activeNames: string[] = [];
+
+      for (const item of notesAtStep) {
+        const durSec = Math.max(0.12, (item.durationSteps * stepMs) / 1000);
+        triggerTimedNote(item.note, durSec);
+        activeNames.push(item.note);
+      }
+
+      if (activeNames.length > 0) {
+        setActiveNotes(activeNames);
+      } else {
+        setActiveNotes([]);
+      }
+
+      stepIndex++;
+    };
+
+    tick();
+    const interval = setInterval(tick, stepMs);
+
+    return () => {
+      clearInterval(interval);
+      setActiveNotes([]);
+      setCurrentStep(null);
+      samplerRef.current?.releaseAll();
+    };
+  }, [isRollPlaying, rollBpm, rollNotes, triggerTimedNote]);
+
+  const handleToggleRollNote = (noteName: string, step: number) => {
+    const existing = rollNotes.find(
+      (n) => n.note === noteName && step >= n.step && step < n.step + n.durationSteps
+    );
+
+    if (existing) {
+      setRollNotes((prev) => prev.filter((n) => n.id !== existing.id));
+    } else {
+      const clampedDuration = Math.min(drawLengthSteps, 16 - step);
+      const newNote: MidiRollNote = {
+        id: `${noteName}-${step}-${Date.now()}`,
+        note: noteName,
+        step,
+        durationSteps: clampedDuration,
+      };
+      setRollNotes((prev) => [...prev, newNote]);
+      triggerTimedNote(noteName, 0.35);
+    }
+  };
+
+  const handleImportMidiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const buffer = await file.arrayBuffer();
+      const parsed = parseMidiFileToRollNotes(buffer);
+      if (parsed.length === 0) {
+        alert("No playable notes found in that MIDI file.");
+        return;
+      }
+      setRollNotes(parsed);
+      setImportedMidiName(file.name);
+      setPianoRollOpen(true);
+      await Tone.start();
+      setIsRollPlaying(true);
+    } catch {
+      alert("Unable to read that .mid file. Please try another standard MIDI file.");
+    } finally {
+      e.target.value = "";
+    }
+  };
+
+  const handlePressNote = useCallback(
+    async (noteName: string, freq: number) => {
+      setActiveNotes((prev) => (prev.includes(noteName) ? prev : [...prev, noteName]));
+
+      if (activeAsset.previewPath) {
+        await Tone.start();
+        if (samplerRef.current && isSampleReady) {
+          samplerRef.current.triggerAttack(noteName);
+        }
+      } else {
+        triggerFallbackOsc(freq, 0.65);
+      }
+    },
+    [activeAsset.previewPath, isSampleReady, triggerFallbackOsc]
+  );
+
+  const handleReleaseNote = useCallback((noteName: string) => {
+    setActiveNotes((prev) => prev.filter((n) => n !== noteName));
+    if (samplerRef.current) {
+      samplerRef.current.triggerRelease(noteName);
+    }
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       const found = PIANO_NOTES.find((k) => k.keyBind === e.key.toLowerCase());
       if (found && !e.repeat) {
-        setActiveNotes((prev) => (prev.includes(found.note) ? prev : [...prev, found.note]));
-        triggerSynthNote(found.freq, 0.65);
+        handlePressNote(found.note, found.freq);
       }
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       const found = PIANO_NOTES.find((k) => k.keyBind === e.key.toLowerCase());
       if (found) {
-        setActiveNotes((prev) => prev.filter((n) => n !== found.note));
+        handleReleaseNote(found.note);
       }
     };
 
-    const handleWindowBlur = () => setActiveNotes([]);
+    const handleWindowBlur = () => {
+      setActiveNotes([]);
+      samplerRef.current?.releaseAll();
+    };
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
@@ -593,28 +995,39 @@ export default function ProdPresetsMarketplace() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [triggerSynthNote]);
+  }, [handlePressNote, handleReleaseNote]);
 
-  const handlePressNote = (noteName: string, freq: number) => {
-    setActiveNotes((prev) => (prev.includes(noteName) ? prev : [...prev, noteName]));
-    triggerSynthNote(freq, 0.65);
-  };
+  const handleTogglePlay = async (asset: AudioAsset) => {
+    if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
+    setIsRollPlaying(false);
 
-  const handleReleaseNote = (noteName: string) => {
-    setActiveNotes((prev) => prev.filter((n) => n !== noteName));
-  };
-
-  const handleTogglePlay = (asset: AudioAsset) => {
     if (activeAsset.id === asset.id && isPlayingPreview) {
+      samplerRef.current?.releaseAll();
       setIsPlayingPreview(false);
       return;
     }
+
+    if (asset.previewPath) {
+      await Tone.start();
+      if (activeAsset.id === asset.id && samplerRef.current && isSampleReady) {
+        samplerRef.current.releaseAll();
+        samplerRef.current.triggerAttackRelease("C3", 3.5);
+        setIsPlayingPreview(true);
+        previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), 3500);
+      } else {
+        autoPlayAfterLoadRef.current = true;
+        setActiveAsset(asset);
+        setIsPlayingPreview(true);
+      }
+      return;
+    }
+
     setActiveAsset(asset);
     setIsPlayingPreview(true);
-    triggerSynthNote(asset.baseFreq, 0.8);
-    setTimeout(() => triggerSynthNote(asset.baseFreq * 1.25, 0.7), 220);
-    setTimeout(() => triggerSynthNote(asset.baseFreq * 1.5, 0.9), 440);
-    setTimeout(() => setIsPlayingPreview(false), 1400);
+    triggerFallbackOsc(asset.baseFreq, 0.8);
+    setTimeout(() => triggerFallbackOsc(asset.baseFreq * 1.25, 0.7), 220);
+    setTimeout(() => triggerFallbackOsc(asset.baseFreq * 1.5, 0.9), 440);
+    previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), 1400);
   };
 
   const triggerFileDownload = async (asset: AudioAsset, userId: string) => {
@@ -726,10 +1139,19 @@ export default function ProdPresetsMarketplace() {
 
   return (
     <div
-      className={`min-h-screen pb-44 transition-colors duration-200 ${
-        darkMode ? "bg-[#0e0f12] text-zinc-100" : "bg-white text-slate-900"
-      }`}
+      className={`min-h-screen transition-colors duration-200 ${
+        pianoRollOpen ? "pb-[430px]" : "pb-44"
+      } ${darkMode ? "bg-[#0e0f12] text-zinc-100" : "bg-white text-slate-900"}`}
     >
+      {/* Hidden MIDI File Input */}
+      <input
+        ref={midiFileInputRef}
+        type="file"
+        accept=".mid,.midi,audio/midi,audio/x-midi"
+        onChange={handleImportMidiFile}
+        className="hidden"
+      />
+
       {/* TOP NAVIGATION BAR */}
       <header
         className={`sticky top-0 z-30 border-b backdrop-blur-md ${
@@ -1112,6 +1534,14 @@ export default function ProdPresetsMarketplace() {
                               >
                                 {item.engine}
                               </span>
+                              {item.previewPath && (
+                                <span
+                                  title="Real Serum audio preview loaded"
+                                  className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400"
+                                >
+                                  HQ Audio
+                                </span>
+                              )}
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                               {item.tags.map((t) => (
@@ -1210,7 +1640,7 @@ export default function ProdPresetsMarketplace() {
         )}
       </main>
 
-      {/* COMPACT BOTTOM DOCKED SYNTH DECK */}
+      {/* BOTTOM DOCKED SYNTH DECK + EXPANDABLE MIDI PIANO ROLL */}
       <footer
         className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-xl transition-colors ${
           darkMode
@@ -1218,15 +1648,242 @@ export default function ProdPresetsMarketplace() {
             : "bg-white/95 border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.06)]"
         }`}
       >
+        {/* EXPANDABLE INTERACTIVE MIDI PIANO ROLL DRAWER */}
+        {pianoRollOpen && (
+          <div
+            className={`border-b ${
+              darkMode ? "bg-[#0d0f14] border-zinc-800" : "bg-slate-50 border-slate-200"
+            }`}
+          >
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
+              {/* Piano Roll Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      await Tone.start();
+                      setIsRollPlaying((p) => !p);
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                      isRollPlaying
+                        ? "bg-rose-600 hover:bg-rose-700 text-white"
+                        : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    }`}
+                  >
+                    {isRollPlaying ? "■ Stop Loop" : "▶ Play MIDI Loop"}
+                  </button>
+
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="opacity-60 font-medium">BPM:</span>
+                    <input
+                      type="number"
+                      min={60}
+                      max={200}
+                      value={rollBpm}
+                      onChange={(e) => setRollBpm(Math.min(200, Math.max(60, Number(e.target.value) || 128)))}
+                      className={`w-14 px-2 py-1 rounded-md border text-xs font-mono ${
+                        darkMode ? "bg-zinc-900 border-zinc-700" : "bg-white border-slate-300"
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1 text-xs">
+                    <span className="opacity-60 font-medium hidden sm:inline">Note Len:</span>
+                    {[
+                      { label: "1/16", steps: 1 },
+                      { label: "1/8", steps: 2 },
+                      { label: "1/4", steps: 4 },
+                    ].map((len) => (
+                      <button
+                        key={len.steps}
+                        onClick={() => setDrawLengthSteps(len.steps)}
+                        className={`px-2 py-1 rounded-md text-[11px] font-mono font-semibold border ${
+                          drawLengthSteps === len.steps
+                            ? "bg-blue-600 text-white border-blue-500"
+                            : darkMode
+                            ? "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white"
+                            : "bg-white border-slate-200 text-slate-600"
+                        }`}
+                      >
+                        {len.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Starter Patterns */}
+                  <div className="hidden md:flex items-center gap-1 pl-1">
+                    {Object.keys(STARTER_PATTERNS).map((name) => (
+                      <button
+                        key={name}
+                        onClick={() => {
+                          setRollNotes(STARTER_PATTERNS[name]);
+                          setImportedMidiName(null);
+                        }}
+                        className={`px-2 py-1 rounded-md text-[11px] font-medium border ${
+                          darkMode
+                            ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-blue-500"
+                            : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {importedMidiName && (
+                    <span className="text-[11px] font-mono text-blue-400 max-w-[140px] truncate">
+                      🎵 {importedMidiName}
+                    </span>
+                  )}
+
+                  <button
+                    onClick={() => midiFileInputRef.current?.click()}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
+                      darkMode
+                        ? "bg-zinc-900 border-zinc-700 text-blue-400 hover:border-blue-500"
+                        : "bg-white border-slate-300 text-blue-600 hover:border-blue-500"
+                    }`}
+                  >
+                    ↑ Import .MID
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setRollNotes([]);
+                      setImportedMidiName(null);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
+                      darkMode
+                        ? "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-rose-400"
+                        : "bg-white border-slate-200 text-slate-600 hover:text-rose-600"
+                    }`}
+                  >
+                    Clear
+                  </button>
+
+                  <button
+                    onClick={() => setPianoRollOpen(false)}
+                    className="px-2 py-1 rounded-lg text-xs opacity-60 hover:opacity-100"
+                    title="Close Piano Roll"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              {/* 16-Step Piano Roll Grid */}
+              <div
+                className={`rounded-xl border overflow-x-auto max-h-52 overflow-y-auto select-none ${
+                  darkMode ? "border-zinc-800 bg-zinc-950" : "border-slate-300 bg-white"
+                }`}
+              >
+                <div className="min-w-[680px]">
+                  {ROLL_ROWS.map((row) => (
+                    <div
+                      key={row.note}
+                      className={`flex items-stretch h-4 border-b last:border-b-0 ${
+                        darkMode ? "border-zinc-900" : "border-slate-100"
+                      }`}
+                    >
+                      {/* Left Pitch Label */}
+                      <button
+                        onClick={() => triggerTimedNote(row.note, 0.35)}
+                        className={`w-12 shrink-0 px-1.5 text-[10px] font-mono font-bold text-left flex items-center justify-between border-r ${
+                          row.isBlack
+                            ? darkMode
+                              ? "bg-zinc-900 text-zinc-400 border-zinc-800"
+                              : "bg-slate-200 text-slate-700 border-slate-300"
+                            : darkMode
+                            ? "bg-zinc-800/80 text-zinc-200 border-zinc-800"
+                            : "bg-slate-50 text-slate-800 border-slate-300"
+                        }`}
+                      >
+                        <span>{row.note}</span>
+                      </button>
+
+                      {/* 16 Step Cells */}
+                      <div className="flex-1 grid grid-cols-16 relative">
+                        {Array.from({ length: 16 }).map((_, stepIdx) => {
+                          const startingNote = rollNotes.find(
+                            (n) => n.note === row.note && n.step === stepIdx
+                          );
+                          const coveredByPrev = rollNotes.some(
+                            (n) =>
+                              n.note === row.note &&
+                              stepIdx > n.step &&
+                              stepIdx < n.step + n.durationSteps
+                          );
+                          const isBeatStart = stepIdx % 4 === 0;
+                          const isPlayhead = currentStep === stepIdx;
+
+                          return (
+                            <div
+                              key={stepIdx}
+                              onClick={() => handleToggleRollNote(row.note, stepIdx)}
+                              className={`relative border-r cursor-pointer transition-colors ${
+                                isBeatStart
+                                  ? darkMode
+                                    ? "border-zinc-700"
+                                    : "border-slate-300"
+                                  : darkMode
+                                  ? "border-zinc-900"
+                                  : "border-slate-100"
+                              } ${
+                                isPlayhead
+                                  ? "bg-blue-500/20"
+                                  : row.isBlack
+                                  ? darkMode
+                                    ? "bg-zinc-950 hover:bg-zinc-800/60"
+                                    : "bg-slate-100/80 hover:bg-blue-50"
+                                  : darkMode
+                                  ? "bg-zinc-900/30 hover:bg-zinc-800/60"
+                                  : "bg-white hover:bg-blue-50"
+                              }`}
+                            >
+                              {startingNote && (
+                                <div
+                                  style={{
+                                    width: `calc(${startingNote.durationSteps * 100}% - 2px)`,
+                                  }}
+                                  className="absolute inset-y-[1px] left-[1px] z-10 rounded-[3px] bg-blue-600 hover:bg-blue-500 shadow-xs flex items-center px-1 text-[8px] font-mono text-white font-bold pointer-events-none"
+                                >
+                                  {startingNote.durationSteps > 1 ? row.note : ""}
+                                </div>
+                              )}
+                              {!startingNote && coveredByPrev && <span className="sr-only">held</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MAIN SYNTH DECK BAR */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
-            <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[230px]">
+            <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[260px]">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-600 text-white">
                     {activeAsset.engine}
                   </span>
                   <span className="text-[11px] font-mono opacity-60">{activeAsset.extension}</span>
+                  {activeAsset.previewPath && (
+                    <span
+                      className={`text-[10px] font-semibold ${
+                        isSampleReady ? "text-emerald-400" : "text-amber-400 animate-pulse"
+                      }`}
+                    >
+                      {isSampleReady ? "● Ready" : "○ Loading..."}
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs font-bold truncate max-w-[210px] mt-0.5">
                   {activeAsset.filename}
@@ -1238,7 +1895,19 @@ export default function ProdPresetsMarketplace() {
                   onClick={() => handleTogglePlay(activeAsset)}
                   className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold transition-colors"
                 >
-                  ▶ Play
+                  {isPlayingPreview ? "■ Stop" : "▶ Play"}
+                </button>
+                <button
+                  onClick={() => setPianoRollOpen((prev) => !prev)}
+                  className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                    pianoRollOpen
+                      ? "bg-blue-600/20 border-blue-500 text-blue-400"
+                      : darkMode
+                      ? "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-blue-500"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-500"
+                  }`}
+                >
+                  🎹 Piano Roll
                 </button>
                 <button
                   onClick={resetKnobs}
