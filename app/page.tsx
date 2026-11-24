@@ -1575,7 +1575,7 @@ export default function ProdPresetsMarketplace() {
               ))}
             </section>
           ) : (
-            /* BORDERLESS STUDIO SOUND LIST WITH LOCKED COLUMN ALIGNMENT & LARGER WAVEFORMS */
+            /* BORDERLESS STUDIO SOUND LIST WITH RESPONSIVE WAVEFORMS & LOCKED COLUMNS */
             <section className="space-y-1">
               {filteredAssets.map((item) => {
                 const isCurrent = activeAsset.id === item.id;
@@ -1587,7 +1587,7 @@ export default function ProdPresetsMarketplace() {
                   <div
                     key={item.id}
                     onClick={() => setActiveAsset(item)}
-                    className={`group flex items-center justify-between gap-4 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
+                    className={`group flex items-center justify-between gap-3 sm:gap-4 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
                       isCurrent
                         ? darkMode
                           ? "bg-white/[0.06] ring-1 ring-blue-500/40"
@@ -1646,13 +1646,13 @@ export default function ProdPresetsMarketplace() {
                       </div>
                     </div>
 
-                    {/* Center: Larger Full-Width Symmetrical Studio Waveform */}
-                    <div className="hidden lg:flex items-center justify-between gap-[3px] h-9 w-64 xl:w-72 shrink-0 px-2">
+                    {/* Center: Compact Fluid Waveform that scales automatically with window width */}
+                    <div className="hidden md:flex items-center justify-between gap-[2px] h-7 flex-1 max-w-[185px] min-w-[72px] px-1">
                       {bars.map((height, idx) => (
                         <div
                           key={idx}
                           style={{ height: `${Math.max(16, height)}%` }}
-                          className={`flex-1 max-w-[3px] rounded-full transition-colors ${
+                          className={`flex-1 max-w-[2.5px] rounded-full transition-colors ${
                             isRowPlaying
                               ? "bg-blue-400 animate-pulse"
                               : isCurrent
@@ -1665,9 +1665,9 @@ export default function ProdPresetsMarketplace() {
                       ))}
                     </div>
 
-                    {/* Metadata Columns: Fixed Widths so Nothing Ever Shifts */}
+                    {/* Metadata Columns: Fixed Widths so Nothing Shifts */}
                     <div className="hidden sm:flex items-center gap-4 text-[11px] font-mono uppercase tracking-wider opacity-55 shrink-0">
-                      <span className="w-11 text-right">{item.duration}</span>
+                      <span className="w-10 text-right">{item.duration}</span>
                       <span className="w-16 text-right">
                         {item.bpm ? `${item.bpm} BPM` : "--"}
                       </span>
@@ -1675,7 +1675,7 @@ export default function ProdPresetsMarketplace() {
                     </div>
 
                     {/* Tag Chips: Fixed Width */}
-                    <div className="hidden xl:flex items-center gap-1.5 w-36 justify-end shrink-0">
+                    <div className="hidden xl:flex items-center gap-1.5 w-32 justify-end shrink-0">
                       {item.tags.slice(0, 2).map((t) => (
                         <span
                           key={t}
@@ -1690,8 +1690,8 @@ export default function ProdPresetsMarketplace() {
                       ))}
                     </div>
 
-                    {/* Right Actions: Locked Width (`w-28`) so `↓ 2 CR` and `↓ Download` align identically */}
-                    <div className="flex items-center justify-end gap-2 shrink-0 w-28 sm:w-32">
+                    {/* Right Actions: Locked Width (`w-32 sm:w-36`) so `↓ 2 credits` and `↓ Download` align identically */}
+                    <div className="flex items-center justify-end gap-2 shrink-0 w-32 sm:w-36">
                       {activeTab === "My Library" && (
                         <button
                           onClick={(e) => {
@@ -1716,7 +1716,7 @@ export default function ProdPresetsMarketplace() {
                           e.stopPropagation();
                           handleUnlockAsset(item);
                         }}
-                        className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all ${
+                        className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
                           isOwned
                             ? darkMode
                               ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
@@ -1724,7 +1724,9 @@ export default function ProdPresetsMarketplace() {
                             : "bg-blue-600 hover:bg-blue-500 text-white shadow-xs"
                         }`}
                       >
-                        {isOwned ? "↓ Download" : `↓ ${item.credits} CR`}
+                        {isOwned
+                          ? "↓ Download"
+                          : `↓ ${item.credits} ${item.credits === 1 ? "credit" : "credits"}`}
                       </button>
                     </div>
                   </div>
@@ -2263,7 +2265,7 @@ export default function ProdPresetsMarketplace() {
                     }`}
                   >
                     <div className="text-[10px] font-bold uppercase text-blue-400">{tier.tag}</div>
-                    <div className="text-base font-extrabold mt-0.5">{tier.cr} CR</div>
+                    <div className="text-base font-extrabold mt-0.5">{tier.cr} credits</div>
                     <div className="text-xs opacity-75 font-medium">{tier.price}</div>
                   </button>
                 );
@@ -2394,7 +2396,7 @@ export default function ProdPresetsMarketplace() {
                             entry.delta > 0 ? "text-emerald-400" : "text-blue-400"
                           }`}
                         >
-                          {entry.delta > 0 ? `+${entry.delta}` : entry.delta} CR
+                          {entry.delta > 0 ? `+${entry.delta}` : entry.delta} credits
                         </span>
                       </div>
                     ))
