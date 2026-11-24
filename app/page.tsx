@@ -5,7 +5,7 @@ import * as Tone from "tone";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase";
 
-type TabType = "Presets" | "Samples" | "Packs" | "My Library";
+type TabType = "Home" | "Presets" | "Samples" | "Packs" | "My Library";
 type SynthEngine = "All" | "Analog Lab" | "Serum" | "Vital" | "Omnisphere" | "WAV";
 
 interface AudioAsset {
@@ -461,7 +461,7 @@ export default function ProdPresetsMarketplace() {
   const supabase = useRef(createClient()).current;
 
   const [darkMode, setDarkMode] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabType>("Presets");
+  const [activeTab, setActiveTab] = useState<TabType>("Home");
   const [selectedPack, setSelectedPack] = useState<Pack | null>(null);
 
   const [packs, setPacks] = useState<Pack[]>(FALLBACK_PACKS);
@@ -1122,11 +1122,162 @@ export default function ProdPresetsMarketplace() {
   });
 
   const navItems: { label: TabType; icon: string }[] = [
+    { label: "Home", icon: "⌂" },
     { label: "Presets", icon: "🎛" },
     { label: "Samples", icon: "〰" },
     { label: "Packs", icon: "▤" },
     { label: "My Library", icon: "↓" },
   ];
+
+  const renderAssetRow = (item: AudioAsset) => {
+    const isCurrent = activeAsset.id === item.id;
+    const isRowPlaying = isCurrent && isPlayingPreview;
+    const isOwned = ownedIds.includes(item.id);
+    const bars = item.waveformBars.split(",").map(Number);
+
+    return (
+      <div
+        key={item.id}
+        onClick={() => setActiveAsset(item)}
+        className={`group flex items-center justify-between gap-3 sm:gap-4 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
+          isCurrent
+            ? darkMode
+              ? "bg-white/[0.06] ring-1 ring-blue-500/40"
+              : "bg-blue-50/80 ring-1 ring-blue-500/30"
+            : darkMode
+            ? "hover:bg-white/[0.035]"
+            : "hover:bg-white hover:shadow-2xs"
+        }`}
+      >
+        {/* Left: Cover Art + Hover Play Overlay + Title/Subtext */}
+        <div className="flex items-center gap-3.5 min-w-0 flex-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleTogglePlay(item);
+            }}
+            className={`relative w-10 h-10 rounded-lg bg-gradient-to-br ${item.coverGradient} flex items-center justify-center text-white shrink-0 shadow-sm overflow-hidden`}
+          >
+            <span
+              className={`text-[10px] font-extrabold transition-opacity ${
+                isRowPlaying ? "opacity-0" : "group-hover:opacity-0"
+              }`}
+            >
+              VP
+            </span>
+            <span
+              className={`absolute inset-0 bg-black/50 backdrop-blur-[1px] flex items-center justify-center text-xs transition-opacity ${
+                isRowPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+              }`}
+            >
+              {isRowPlaying ? "■" : "▶"}
+            </span>
+          </button>
+
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className={`font-semibold text-[13px] truncate transition-colors ${
+                  isCurrent ? "text-blue-400" : "group-hover:text-blue-400"
+                }`}
+              >
+                {item.filename}
+              </span>
+              {item.previewPath && (
+                <span
+                  title="Real Serum audio preview loaded"
+                  className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider opacity-45 mt-0.5 truncate">
+              <span>{item.packTitle}</span>
+              <span>•</span>
+              <span>{item.engine}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Center: Compact Fluid Waveform that scales smoothly with window width */}
+        <div className="hidden md:flex items-center justify-between gap-[2px] h-7 flex-1 max-w-[185px] min-w-[72px] px-1">
+          {bars.map((height, idx) => (
+            <div
+              key={idx}
+              style={{ height: `${Math.max(16, height)}%` }}
+              className={`flex-1 max-w-[2.5px] rounded-full transition-colors ${
+                isRowPlaying
+                  ? "bg-blue-400 animate-pulse"
+                  : isCurrent
+                  ? "bg-blue-500/85"
+                  : darkMode
+                  ? "bg-zinc-700/90 group-hover:bg-zinc-500"
+                  : "bg-slate-300 group-hover:bg-blue-400"
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Metadata Columns: Fixed Widths */}
+        <div className="hidden sm:flex items-center gap-4 text-[11px] font-mono uppercase tracking-wider opacity-55 shrink-0">
+          <span className="w-10 text-right">{item.duration}</span>
+          <span className="w-16 text-right">{item.bpm ? `${item.bpm} BPM` : "--"}</span>
+          <span className="w-16 text-right">{item.musicalKey}</span>
+        </div>
+
+        {/* Tag Chips: Fixed Width */}
+        <div className="hidden xl:flex items-center gap-1.5 w-32 justify-end shrink-0">
+          {item.tags.slice(0, 2).map((t) => (
+            <span
+              key={t}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider truncate ${
+                darkMode ? "bg-white/[0.04] text-zinc-400" : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+
+        {/* Right Actions: Locked Width (`w-32 sm:w-36`) with ALL CAPS labels */}
+        <div className="flex items-center justify-end gap-2 shrink-0 w-32 sm:w-36">
+          {activeTab === "My Library" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                alert(`Royalty-Free Commercial License Certificate generated for ${item.filename}`);
+              }}
+              title="Download Commercial License"
+              className={`px-2 py-1.5 rounded-lg border text-[10px] font-mono uppercase shrink-0 ${
+                darkMode
+                  ? "border-white/10 text-zinc-400 hover:text-white"
+                  : "border-slate-200 text-slate-600"
+              }`}
+            >
+              LIC
+            </button>
+          )}
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUnlockAsset(item);
+            }}
+            className={`w-full py-1.5 px-2.5 rounded-lg text-[11px] font-bold tracking-wide uppercase inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
+              isOwned
+                ? darkMode
+                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                  : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : "bg-blue-600 hover:bg-blue-500 text-white shadow-xs"
+            }`}
+          >
+            {isOwned
+              ? "↓ DOWNLOAD"
+              : `↓ ${item.credits} ${item.credits === 1 ? "CREDIT" : "CREDITS"}`}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -1152,7 +1303,7 @@ export default function ProdPresetsMarketplace() {
           <div
             onClick={() => {
               setSelectedPack(null);
-              setActiveTab("Presets");
+              setActiveTab("Home");
             }}
             className="flex items-center gap-2.5 px-2 cursor-pointer group"
           >
@@ -1216,11 +1367,12 @@ export default function ProdPresetsMarketplace() {
               Synth Engines
             </div>
             {(["All", "Serum", "Analog Lab", "Vital", "Omnisphere"] as SynthEngine[]).map((eng) => {
-              const isSelected = selectedEngine === eng;
+              const isSelected = selectedEngine === eng && activeTab === "Presets";
               return (
                 <button
                   key={eng}
                   onClick={() => {
+                    setSelectedPack(null);
                     setActiveTab("Presets");
                     setSelectedEngine(eng);
                   }}
@@ -1264,7 +1416,10 @@ export default function ProdPresetsMarketplace() {
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-7 h-16 flex items-center justify-between gap-4">
             <div className="flex md:hidden items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
+              <div
+                onClick={() => setActiveTab("Home")}
+                className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs cursor-pointer"
+              >
                 VP
               </div>
               <select
@@ -1292,7 +1447,12 @@ export default function ProdPresetsMarketplace() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (activeTab === "Home" && e.target.value.trim()) {
+                    setActiveTab("Presets");
+                  }
+                }}
                 placeholder="Search VirtualPresets..."
                 className={`w-full pl-9 pr-4 py-2 rounded-full text-xs outline-none transition-all border ${
                   darkMode
@@ -1356,7 +1516,7 @@ export default function ProdPresetsMarketplace() {
         </header>
 
         {/* MAIN CATALOG CANVAS */}
-        <main className="max-w-7xl w-full mx-auto px-4 sm:px-7 py-6 space-y-6">
+        <main className="max-w-7xl w-full mx-auto px-4 sm:px-7 py-6 space-y-8">
           {checkoutBanner && (
             <div
               className={`rounded-xl border px-4 py-3 flex items-center justify-between text-xs font-medium ${
@@ -1376,7 +1536,204 @@ export default function ProdPresetsMarketplace() {
             </div>
           )}
 
-          {activeTab !== "Packs" && (
+          {/* DEDICATED HOME PAGE */}
+          {activeTab === "Home" && (
+            <div className="space-y-9">
+              {/* Hero Banner */}
+              <section
+                className={`relative rounded-3xl border overflow-hidden p-7 sm:p-11 ${
+                  darkMode
+                    ? "bg-gradient-to-br from-[#111522] via-[#0d1018] to-[#09090b] border-white/[0.08]"
+                    : "bg-gradient-to-br from-blue-50 via-white to-slate-50 border-slate-200 shadow-sm"
+                }`}
+              >
+                <div className="pointer-events-none absolute -top-24 -right-24 w-80 h-80 rounded-full bg-blue-600/20 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-24 left-1/3 w-72 h-72 rounded-full bg-cyan-500/10 blur-3xl" />
+
+                <div className="relative z-10 max-w-2xl space-y-5">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[11px] font-mono uppercase tracking-wider font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                    Audition Live in Browser • Zero Subscriptions
+                  </div>
+
+                  <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.08]">
+                    The Best Presets In The Industry For The Synths You{" "}
+                    <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                      Already Own
+                    </span>
+                  </h1>
+
+                  <p
+                    className={`text-sm sm:text-base leading-relaxed max-w-xl ${
+                      darkMode ? "text-zinc-400" : "text-slate-600"
+                    }`}
+                  >
+                    Play every Serum 2, Analog Lab, Vital, and Omnisphere preset directly on our
+                    interactive MIDI keyboard and piano roll before spending a single credit.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <button
+                      onClick={() => setActiveTab("Presets")}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold shadow-lg shadow-blue-600/25 transition-all"
+                    >
+                      Browse All Presets →
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setPianoRollOpen(true);
+                      }}
+                      className={`px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-colors ${
+                        darkMode
+                          ? "bg-white/[0.04] border-white/10 text-zinc-200 hover:border-blue-500/60"
+                          : "bg-white border-slate-200 text-slate-800 hover:border-blue-500"
+                      }`}
+                    >
+                      🎹 Open MIDI Piano Roll
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              {/* Supported Synth Engines Grid */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
+                    Browse By Synth Engine
+                  </h2>
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {[
+                    {
+                      name: "Serum" as SynthEngine,
+                      ext: ".SerumPreset / .fxp",
+                      desc: "Chart-ready EDM leads, basses & plucks",
+                      accent: "from-cyan-500 to-blue-600",
+                    },
+                    {
+                      name: "Analog Lab" as SynthEngine,
+                      ext: ".labx",
+                      desc: "Warm vintage keys, pads & analog textures",
+                      accent: "from-indigo-500 to-purple-600",
+                    },
+                    {
+                      name: "Vital" as SynthEngine,
+                      ext: ".vital",
+                      desc: "Spectral wavetable leads & futuristic arps",
+                      accent: "from-sky-500 to-indigo-600",
+                    },
+                    {
+                      name: "Omnisphere" as SynthEngine,
+                      ext: ".prt_omn",
+                      desc: "Cinematic atmospheres & layered soundscapes",
+                      accent: "from-blue-600 to-slate-800",
+                    },
+                  ].map((synth) => (
+                    <div
+                      key={synth.name}
+                      onClick={() => {
+                        setSelectedEngine(synth.name);
+                        setActiveTab("Presets");
+                      }}
+                      className={`group rounded-2xl border p-4 cursor-pointer transition-all hover:-translate-y-0.5 ${
+                        darkMode
+                          ? "bg-white/[0.025] border-white/[0.07] hover:border-blue-500/60"
+                          : "bg-white border-slate-200 hover:border-blue-500 shadow-2xs"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div
+                          className={`w-8 h-8 rounded-lg bg-gradient-to-br ${synth.accent} flex items-center justify-center text-white text-xs font-extrabold`}
+                        >
+                          {synth.name.slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="text-[10px] font-mono opacity-45">{synth.ext}</span>
+                      </div>
+                      <h3 className="font-bold text-sm group-hover:text-blue-400 transition-colors">
+                        {synth.name}
+                      </h3>
+                      <p
+                        className={`text-xs mt-1 leading-relaxed ${
+                          darkMode ? "text-zinc-400" : "text-slate-500"
+                        }`}
+                      >
+                        {synth.desc}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Featured Sound Packs */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
+                    Featured Sound Packs
+                  </h2>
+                  <button
+                    onClick={() => setActiveTab("Packs")}
+                    className="text-[11px] font-medium text-blue-400 hover:underline"
+                  >
+                    View all packs →
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {packs.slice(0, 3).map((pack) => (
+                    <div
+                      key={pack.id}
+                      onClick={() => {
+                        setSelectedPack(pack);
+                        setActiveTab("Presets");
+                      }}
+                      className={`group rounded-2xl overflow-hidden cursor-pointer border transition-all hover:-translate-y-0.5 ${
+                        darkMode
+                          ? "border-white/[0.07] bg-white/[0.02] hover:border-blue-500/60"
+                          : "border-slate-200 bg-white hover:border-blue-500 shadow-2xs"
+                      }`}
+                    >
+                      <div
+                        className={`aspect-[16/9] w-full bg-gradient-to-br ${pack.coverGradient} p-4 flex flex-col justify-between`}
+                      >
+                        <span className="self-start px-2.5 py-0.5 rounded-md bg-black/45 backdrop-blur-md text-[10px] font-mono uppercase tracking-wider text-white">
+                          {pack.genre}
+                        </span>
+                        <div>
+                          <h3 className="font-bold text-base text-white group-hover:translate-x-0.5 transition-transform">
+                            {pack.title}
+                          </h3>
+                          <p className="text-[11px] font-mono uppercase tracking-wider text-white/75">
+                            By {pack.creator}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Trending Presets Preview List */}
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
+                    Trending Presets — Click Any Row to Audition
+                  </h2>
+                  <button
+                    onClick={() => setActiveTab("Presets")}
+                    className="text-[11px] font-medium text-blue-400 hover:underline"
+                  >
+                    Explore full catalog ({assets.length}) →
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {assets.slice(0, 6).map((item) => renderAssetRow(item))}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {/* CATALOG FILTER BAR (Presets / Samples / My Library) */}
+          {activeTab !== "Home" && activeTab !== "Packs" && (
             <section className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2.5">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1461,7 +1818,7 @@ export default function ProdPresetsMarketplace() {
             </section>
           )}
 
-          {activeTab !== "Packs" && activeTab !== "My Library" && !selectedPack && (
+          {activeTab !== "Home" && activeTab !== "Packs" && activeTab !== "My Library" && !selectedPack && (
             <section className="space-y-2.5">
               <div className="flex items-center justify-between">
                 <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
@@ -1508,7 +1865,7 @@ export default function ProdPresetsMarketplace() {
             </section>
           )}
 
-          {selectedPack && (
+          {activeTab !== "Home" && selectedPack && (
             <section
               className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 ${
                 darkMode ? "bg-white/[0.03] border-white/[0.08]" : "bg-blue-50/60 border-blue-100"
@@ -1543,7 +1900,7 @@ export default function ProdPresetsMarketplace() {
             </section>
           )}
 
-          {activeTab === "Packs" && !selectedPack ? (
+          {activeTab === "Packs" && !selectedPack && (
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {packs.map((pack) => (
                 <div
@@ -1574,164 +1931,11 @@ export default function ProdPresetsMarketplace() {
                 </div>
               ))}
             </section>
-          ) : (
-            /* BORDERLESS STUDIO SOUND LIST WITH RESPONSIVE WAVEFORMS & LOCKED COLUMNS */
+          )}
+
+          {activeTab !== "Home" && !(activeTab === "Packs" && !selectedPack) && (
             <section className="space-y-1">
-              {filteredAssets.map((item) => {
-                const isCurrent = activeAsset.id === item.id;
-                const isRowPlaying = isCurrent && isPlayingPreview;
-                const isOwned = ownedIds.includes(item.id);
-                const bars = item.waveformBars.split(",").map(Number);
-
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => setActiveAsset(item)}
-                    className={`group flex items-center justify-between gap-3 sm:gap-4 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
-                      isCurrent
-                        ? darkMode
-                          ? "bg-white/[0.06] ring-1 ring-blue-500/40"
-                          : "bg-blue-50/80 ring-1 ring-blue-500/30"
-                        : darkMode
-                        ? "hover:bg-white/[0.035]"
-                        : "hover:bg-white hover:shadow-2xs"
-                    }`}
-                  >
-                    {/* Left: Cover Art + Hover Play Overlay + Title/Subtext */}
-                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTogglePlay(item);
-                        }}
-                        className={`relative w-10 h-10 rounded-lg bg-gradient-to-br ${item.coverGradient} flex items-center justify-center text-white shrink-0 shadow-sm overflow-hidden`}
-                      >
-                        <span
-                          className={`text-[10px] font-extrabold transition-opacity ${
-                            isRowPlaying ? "opacity-0" : "group-hover:opacity-0"
-                          }`}
-                        >
-                          VP
-                        </span>
-                        <span
-                          className={`absolute inset-0 bg-black/50 backdrop-blur-[1px] flex items-center justify-center text-xs transition-opacity ${
-                            isRowPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                          }`}
-                        >
-                          {isRowPlaying ? "■" : "▶"}
-                        </span>
-                      </button>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`font-semibold text-[13px] truncate transition-colors ${
-                              isCurrent ? "text-blue-400" : "group-hover:text-blue-400"
-                            }`}
-                          >
-                            {item.filename}
-                          </span>
-                          {item.previewPath && (
-                            <span
-                              title="Real Serum audio preview loaded"
-                              className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"
-                            />
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider opacity-45 mt-0.5 truncate">
-                          <span>{item.packTitle}</span>
-                          <span>•</span>
-                          <span>{item.engine}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Center: Compact Fluid Waveform that scales automatically with window width */}
-                    <div className="hidden md:flex items-center justify-between gap-[2px] h-7 flex-1 max-w-[185px] min-w-[72px] px-1">
-                      {bars.map((height, idx) => (
-                        <div
-                          key={idx}
-                          style={{ height: `${Math.max(16, height)}%` }}
-                          className={`flex-1 max-w-[2.5px] rounded-full transition-colors ${
-                            isRowPlaying
-                              ? "bg-blue-400 animate-pulse"
-                              : isCurrent
-                              ? "bg-blue-500/85"
-                              : darkMode
-                              ? "bg-zinc-700/90 group-hover:bg-zinc-500"
-                              : "bg-slate-300 group-hover:bg-blue-400"
-                          }`}
-                        />
-                      ))}
-                    </div>
-
-                    {/* Metadata Columns: Fixed Widths so Nothing Shifts */}
-                    <div className="hidden sm:flex items-center gap-4 text-[11px] font-mono uppercase tracking-wider opacity-55 shrink-0">
-                      <span className="w-10 text-right">{item.duration}</span>
-                      <span className="w-16 text-right">
-                        {item.bpm ? `${item.bpm} BPM` : "--"}
-                      </span>
-                      <span className="w-16 text-right">{item.musicalKey}</span>
-                    </div>
-
-                    {/* Tag Chips: Fixed Width */}
-                    <div className="hidden xl:flex items-center gap-1.5 w-32 justify-end shrink-0">
-                      {item.tags.slice(0, 2).map((t) => (
-                        <span
-                          key={t}
-                          className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider truncate ${
-                            darkMode
-                              ? "bg-white/[0.04] text-zinc-400"
-                              : "bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-
-                    {/* Right Actions: Locked Width (`w-32 sm:w-36`) so `↓ 2 credits` and `↓ Download` align identically */}
-                    <div className="flex items-center justify-end gap-2 shrink-0 w-32 sm:w-36">
-                      {activeTab === "My Library" && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            alert(
-                              `Royalty-Free Commercial License Certificate generated for ${item.filename}`
-                            );
-                          }}
-                          title="Download Commercial License"
-                          className={`px-2 py-1.5 rounded-lg border text-[10px] font-mono uppercase shrink-0 ${
-                            darkMode
-                              ? "border-white/10 text-zinc-400 hover:text-white"
-                              : "border-slate-200 text-slate-600"
-                          }`}
-                        >
-                          Lic
-                        </button>
-                      )}
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUnlockAsset(item);
-                        }}
-                        className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-all ${
-                          isOwned
-                            ? darkMode
-                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
-                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : "bg-blue-600 hover:bg-blue-500 text-white shadow-xs"
-                        }`}
-                      >
-                        {isOwned
-                          ? "↓ Download"
-                          : `↓ ${item.credits} ${item.credits === 1 ? "credit" : "credits"}`}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+              {filteredAssets.map((item) => renderAssetRow(item))}
 
               {filteredAssets.length === 0 && (
                 <div className="py-16 text-center text-sm opacity-50">
@@ -2265,7 +2469,7 @@ export default function ProdPresetsMarketplace() {
                     }`}
                   >
                     <div className="text-[10px] font-bold uppercase text-blue-400">{tier.tag}</div>
-                    <div className="text-base font-extrabold mt-0.5">{tier.cr} credits</div>
+                    <div className="text-base font-extrabold mt-0.5 uppercase">{tier.cr} CREDITS</div>
                     <div className="text-xs opacity-75 font-medium">{tier.price}</div>
                   </button>
                 );
@@ -2306,11 +2510,11 @@ export default function ProdPresetsMarketplace() {
             <button
               onClick={handleCompletePayment}
               disabled={checkoutLoading}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors"
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors uppercase"
             >
               {checkoutLoading
                 ? "Redirecting to Stripe..."
-                : `Continue to Stripe • Add ${selectedBundleCredits} Credits`}
+                : `Continue to Stripe • Add ${selectedBundleCredits} CREDITS`}
             </button>
           </div>
         </div>
@@ -2347,16 +2551,16 @@ export default function ProdPresetsMarketplace() {
                 <div className="text-xs uppercase tracking-wider opacity-80 font-semibold">
                   Available Balance
                 </div>
-                <div className="text-3xl font-bold">{credits} Credits</div>
+                <div className="text-3xl font-bold uppercase">{credits} CREDITS</div>
                 <div className="pt-2 flex gap-2">
                   <button
                     onClick={() => {
                       setAccountOpen(false);
                       setPaymentModalOpen(true);
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 transition-colors"
+                    className="px-3 py-1.5 rounded-lg bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 transition-colors uppercase"
                   >
-                    + Buy More Credits
+                    + Buy More CREDITS
                   </button>
                   <button
                     onClick={() => {
@@ -2392,11 +2596,11 @@ export default function ProdPresetsMarketplace() {
                           <div className="opacity-50 text-[11px]">{entry.date}</div>
                         </div>
                         <span
-                          className={`font-mono font-bold ${
+                          className={`font-mono font-bold uppercase ${
                             entry.delta > 0 ? "text-emerald-400" : "text-blue-400"
                           }`}
                         >
-                          {entry.delta > 0 ? `+${entry.delta}` : entry.delta} credits
+                          {entry.delta > 0 ? `+${entry.delta}` : entry.delta} CREDITS
                         </span>
                       </div>
                     ))
