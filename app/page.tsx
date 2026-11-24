@@ -500,6 +500,7 @@ export default function ProdPresetsMarketplace() {
   const [sampleError, setSampleError] = useState<string | null>(null);
   const [activeNotes, setActiveNotes] = useState<string[]>([]);
   const [dockMinimized, setDockMinimized] = useState(false);
+  const [homeDeckVisible, setHomeDeckVisible] = useState(false);
 
   // Interactive MIDI Piano Roll Sequencer State
   const [pianoRollOpen, setPianoRollOpen] = useState(false);
@@ -522,6 +523,8 @@ export default function ProdPresetsMarketplace() {
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoPlayAfterLoadRef = useRef<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const showSynthDeck = activeTab !== "Home" || homeDeckVisible || pianoRollOpen;
 
   const getPreviewUrl = useCallback((previewPath?: string | null) => {
     if (!previewPath) return null;
@@ -951,6 +954,8 @@ export default function ProdPresetsMarketplace() {
   }, []);
 
   useEffect(() => {
+    if (!showSynthDeck) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       const found = PIANO_NOTES.find((k) => k.keyBind === e.key.toLowerCase());
@@ -979,11 +984,12 @@ export default function ProdPresetsMarketplace() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [handlePressNote, handleReleaseNote]);
+  }, [showSynthDeck, handlePressNote, handleReleaseNote]);
 
   const handleTogglePlay = async (asset: AudioAsset) => {
     if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
     setIsRollPlaying(false);
+    setHomeDeckVisible(true);
 
     if (activeAsset.id === asset.id && isPlayingPreview) {
       samplerRef.current?.releaseAll();
@@ -1138,9 +1144,12 @@ export default function ProdPresetsMarketplace() {
     return (
       <div
         key={item.id}
-        onClick={() => setActiveAsset(item)}
+        onClick={() => {
+          setActiveAsset(item);
+          if (activeTab === "Home") setHomeDeckVisible(true);
+        }}
         className={`group flex items-center justify-between gap-3 sm:gap-4 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
-          isCurrent
+          isCurrent && showSynthDeck
             ? darkMode
               ? "bg-white/[0.06] ring-1 ring-blue-500/40"
               : "bg-blue-50/80 ring-1 ring-blue-500/30"
@@ -1178,7 +1187,7 @@ export default function ProdPresetsMarketplace() {
             <div className="flex items-center gap-2">
               <span
                 className={`font-semibold text-[13px] truncate transition-colors ${
-                  isCurrent ? "text-blue-400" : "group-hover:text-blue-400"
+                  isCurrent && showSynthDeck ? "text-blue-400" : "group-hover:text-blue-400"
                 }`}
               >
                 {item.filename}
@@ -1207,7 +1216,7 @@ export default function ProdPresetsMarketplace() {
               className={`flex-1 max-w-[2.5px] rounded-full transition-colors ${
                 isRowPlaying
                   ? "bg-blue-400 animate-pulse"
-                  : isCurrent
+                  : isCurrent && showSynthDeck
                   ? "bg-blue-500/85"
                   : darkMode
                   ? "bg-zinc-700/90 group-hover:bg-zinc-500"
@@ -1282,7 +1291,7 @@ export default function ProdPresetsMarketplace() {
   return (
     <div
       className={`min-h-screen flex transition-colors duration-200 ${
-        pianoRollOpen ? "pb-[430px]" : "pb-44"
+        !showSynthDeck ? "pb-12" : pianoRollOpen ? "pb-[430px]" : "pb-44"
       } ${darkMode ? "bg-[#09090b] text-zinc-100" : "bg-slate-50/70 text-slate-900"}`}
     >
       <input
@@ -1303,6 +1312,7 @@ export default function ProdPresetsMarketplace() {
           <div
             onClick={() => {
               setSelectedPack(null);
+              setHomeDeckVisible(false);
               setActiveTab("Home");
             }}
             className="flex items-center gap-2.5 px-2 cursor-pointer group"
@@ -1328,6 +1338,7 @@ export default function ProdPresetsMarketplace() {
                   key={item.label}
                   onClick={() => {
                     setSelectedPack(null);
+                    if (item.label === "Home") setHomeDeckVisible(false);
                     setActiveTab(item.label);
                   }}
                   className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all ${
@@ -1417,7 +1428,10 @@ export default function ProdPresetsMarketplace() {
           <div className="max-w-7xl mx-auto px-4 sm:px-7 h-16 flex items-center justify-between gap-4">
             <div className="flex md:hidden items-center gap-2">
               <div
-                onClick={() => setActiveTab("Home")}
+                onClick={() => {
+                  setHomeDeckVisible(false);
+                  setActiveTab("Home");
+                }}
                 className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs cursor-pointer"
               >
                 VP
@@ -1425,8 +1439,10 @@ export default function ProdPresetsMarketplace() {
               <select
                 value={activeTab}
                 onChange={(e) => {
+                  const next = e.target.value as TabType;
                   setSelectedPack(null);
-                  setActiveTab(e.target.value as TabType);
+                  if (next === "Home") setHomeDeckVisible(false);
+                  setActiveTab(next);
                 }}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
                   darkMode ? "bg-zinc-900 border-white/10" : "bg-white border-slate-200"
@@ -1582,6 +1598,7 @@ export default function ProdPresetsMarketplace() {
 
                     <button
                       onClick={() => {
+                        setHomeDeckVisible(true);
                         setPianoRollOpen(true);
                       }}
                       className={`px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-colors ${
@@ -1949,377 +1966,396 @@ export default function ProdPresetsMarketplace() {
         </main>
       </div>
 
-      {/* BOTTOM DOCKED SYNTH DECK + EXPANDABLE MIDI PIANO ROLL */}
-      <footer
-        className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-2xl transition-colors ${
-          darkMode
-            ? "bg-[#0d0e12]/95 border-white/[0.08] shadow-[0_-12px_40px_rgba(0,0,0,0.65)]"
-            : "bg-white/95 border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.06)]"
-        }`}
-      >
-        {pianoRollOpen && (
-          <div
-            className={`border-b ${
-              darkMode ? "bg-[#090a0d] border-white/[0.07]" : "bg-slate-50 border-slate-200"
-            }`}
-          >
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={async () => {
-                      await Tone.start();
-                      setIsRollPlaying((p) => !p);
-                    }}
-                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                      isRollPlaying
-                        ? "bg-rose-600 hover:bg-rose-700 text-white"
-                        : "bg-emerald-600 hover:bg-emerald-500 text-white"
-                    }`}
-                  >
-                    {isRollPlaying ? "■ Stop Loop" : "▶ Play MIDI Loop"}
-                  </button>
-
-                  <div className="flex items-center gap-1.5 text-xs">
-                    <span className="opacity-50 font-mono text-[11px]">BPM</span>
-                    <input
-                      type="number"
-                      min={60}
-                      max={200}
-                      value={rollBpm}
-                      onChange={(e) =>
-                        setRollBpm(Math.min(200, Math.max(60, Number(e.target.value) || 128)))
-                      }
-                      className={`w-14 px-2 py-1 rounded-md border text-xs font-mono ${
-                        darkMode ? "bg-zinc-900 border-white/10" : "bg-white border-slate-300"
-                      }`}
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-1 text-xs">
-                    <span className="opacity-50 font-mono text-[11px] hidden sm:inline">STEP</span>
-                    {[
-                      { label: "1/16", steps: 1 },
-                      { label: "1/8", steps: 2 },
-                      { label: "1/4", steps: 4 },
-                    ].map((len) => (
-                      <button
-                        key={len.steps}
-                        onClick={() => setDrawLengthSteps(len.steps)}
-                        className={`px-2 py-1 rounded-md text-[11px] font-mono font-semibold border ${
-                          drawLengthSteps === len.steps
-                            ? "bg-blue-600 text-white border-blue-500"
-                            : darkMode
-                            ? "bg-zinc-900 border-white/[0.08] text-zinc-400 hover:text-white"
-                            : "bg-white border-slate-200 text-slate-600"
-                        }`}
-                      >
-                        {len.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="hidden md:flex items-center gap-1 pl-1">
-                    {Object.keys(STARTER_PATTERNS).map((name) => (
-                      <button
-                        key={name}
-                        onClick={() => {
-                          setRollNotes(STARTER_PATTERNS[name]);
-                          setImportedMidiName(null);
-                        }}
-                        className={`px-2 py-1 rounded-md text-[11px] font-medium border ${
-                          darkMode
-                            ? "bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:border-blue-500"
-                            : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
-                        }`}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {importedMidiName && (
-                    <span className="text-[11px] font-mono text-blue-400 max-w-[140px] truncate">
-                      🎵 {importedMidiName}
-                    </span>
-                  )}
-
-                  <button
-                    onClick={() => midiFileInputRef.current?.click()}
-                    className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
-                      darkMode
-                        ? "bg-white/[0.04] border-white/10 text-blue-400 hover:border-blue-500"
-                        : "bg-white border-slate-300 text-blue-600 hover:border-blue-500"
-                    }`}
-                  >
-                    ↑ Import .MID
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setRollNotes([]);
-                      setImportedMidiName(null);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
-                      darkMode
-                        ? "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:text-rose-400"
-                        : "bg-white border-slate-200 text-slate-600 hover:text-rose-600"
-                    }`}
-                  >
-                    Clear
-                  </button>
-
-                  <button
-                    onClick={() => setPianoRollOpen(false)}
-                    className="px-2 py-1 rounded-lg text-xs opacity-60 hover:opacity-100"
-                    title="Close Piano Roll"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              <div
-                className={`rounded-xl border overflow-x-auto max-h-52 overflow-y-auto select-none ${
-                  darkMode ? "border-white/[0.08] bg-zinc-950" : "border-slate-300 bg-white"
-                }`}
-              >
-                <div className="min-w-[680px]">
-                  {ROLL_ROWS.map((row) => (
-                    <div
-                      key={row.note}
-                      className={`flex items-stretch h-4 border-b last:border-b-0 ${
-                        darkMode ? "border-white/[0.04]" : "border-slate-100"
+      {/* BOTTOM DOCKED SYNTH DECK (HIDDEN ON HOME UNTIL INTERACTED) */}
+      {showSynthDeck && (
+        <footer
+          className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-2xl transition-colors ${
+            darkMode
+              ? "bg-[#0d0e12]/95 border-white/[0.08] shadow-[0_-12px_40px_rgba(0,0,0,0.65)]"
+              : "bg-white/95 border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.06)]"
+          }`}
+        >
+          {pianoRollOpen && (
+            <div
+              className={`border-b ${
+                darkMode ? "bg-[#090a0d] border-white/[0.07]" : "bg-slate-50 border-slate-200"
+              }`}
+            >
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        await Tone.start();
+                        setIsRollPlaying((p) => !p);
+                      }}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                        isRollPlaying
+                          ? "bg-rose-600 hover:bg-rose-700 text-white"
+                          : "bg-emerald-600 hover:bg-emerald-500 text-white"
                       }`}
                     >
-                      <button
-                        onClick={() => triggerTimedNote(row.note, 0.35)}
-                        className={`w-12 shrink-0 px-1.5 text-[10px] font-mono font-bold text-left flex items-center justify-between border-r ${
-                          row.isBlack
-                            ? darkMode
-                              ? "bg-zinc-900 text-zinc-400 border-white/[0.06]"
-                              : "bg-slate-200 text-slate-700 border-slate-300"
-                            : darkMode
-                            ? "bg-zinc-800/80 text-zinc-200 border-white/[0.06]"
-                            : "bg-slate-50 text-slate-800 border-slate-300"
+                      {isRollPlaying ? "■ Stop Loop" : "▶ Play MIDI Loop"}
+                    </button>
+
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="opacity-50 font-mono text-[11px]">BPM</span>
+                      <input
+                        type="number"
+                        min={60}
+                        max={200}
+                        value={rollBpm}
+                        onChange={(e) =>
+                          setRollBpm(Math.min(200, Math.max(60, Number(e.target.value) || 128)))
+                        }
+                        className={`w-14 px-2 py-1 rounded-md border text-xs font-mono ${
+                          darkMode ? "bg-zinc-900 border-white/10" : "bg-white border-slate-300"
                         }`}
-                      >
-                        <span>{row.note}</span>
-                      </button>
-
-                      <div className="flex-1 grid grid-cols-16 relative">
-                        {Array.from({ length: 16 }).map((_, stepIdx) => {
-                          const startingNote = rollNotes.find(
-                            (n) => n.note === row.note && n.step === stepIdx
-                          );
-                          const coveredByPrev = rollNotes.some(
-                            (n) =>
-                              n.note === row.note &&
-                              stepIdx > n.step &&
-                              stepIdx < n.step + n.durationSteps
-                          );
-                          const isBeatStart = stepIdx % 4 === 0;
-                          const isPlayhead = currentStep === stepIdx;
-
-                          return (
-                            <div
-                              key={stepIdx}
-                              onClick={() => handleToggleRollNote(row.note, stepIdx)}
-                              className={`relative border-r cursor-pointer transition-colors ${
-                                isBeatStart
-                                  ? darkMode
-                                    ? "border-white/15"
-                                    : "border-slate-300"
-                                  : darkMode
-                                  ? "border-white/[0.04]"
-                                  : "border-slate-100"
-                              } ${
-                                isPlayhead
-                                  ? "bg-blue-500/20"
-                                  : row.isBlack
-                                  ? darkMode
-                                    ? "bg-zinc-950 hover:bg-zinc-800/60"
-                                    : "bg-slate-100/80 hover:bg-blue-50"
-                                  : darkMode
-                                  ? "bg-zinc-900/30 hover:bg-zinc-800/60"
-                                  : "bg-white hover:bg-blue-50"
-                              }`}
-                            >
-                              {startingNote && (
-                                <div
-                                  style={{
-                                    width: `calc(${startingNote.durationSteps * 100}% - 2px)`,
-                                  }}
-                                  className="absolute inset-y-[1px] left-[1px] z-10 rounded-[3px] bg-blue-500 hover:bg-blue-400 shadow-xs flex items-center px-1 text-[8px] font-mono text-white font-bold pointer-events-none"
-                                >
-                                  {startingNote.durationSteps > 1 ? row.note : ""}
-                                </div>
-                              )}
-                              {!startingNote && coveredByPrev && <span className="sr-only">held</span>}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      />
                     </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
-            <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[265px]">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div
-                  className={`w-9 h-9 rounded-lg bg-gradient-to-br ${activeAsset.coverGradient} flex items-center justify-center text-white text-[10px] font-extrabold shrink-0`}
-                >
-                  VP
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-blue-400 font-semibold">
-                      {activeAsset.engine}
-                    </span>
-                    {activeAsset.previewPath && (
-                      <span
-                        className={`text-[10px] font-mono ${
-                          sampleError
-                            ? "text-rose-400"
-                            : isSampleReady
-                            ? "text-emerald-400"
-                            : "text-amber-400 animate-pulse"
-                        }`}
-                      >
-                        {sampleError
-                          ? `• ${sampleError}`
-                          : isSampleReady
-                          ? "• Ready"
-                          : "• Loading..."}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs font-bold truncate max-w-[185px] mt-0.5">
-                    {activeAsset.filename}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={() => handleTogglePlay(activeAsset)}
-                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold transition-colors"
-                >
-                  {isPlayingPreview ? "■ Stop" : "▶ Play"}
-                </button>
-                <button
-                  onClick={() => setPianoRollOpen((prev) => !prev)}
-                  className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
-                    pianoRollOpen
-                      ? "bg-blue-600/20 border-blue-500 text-blue-400"
-                      : darkMode
-                      ? "border-white/10 bg-white/[0.04] text-zinc-200 hover:border-blue-500"
-                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-500"
-                  }`}
-                >
-                  🎹 Piano Roll
-                </button>
-                <button
-                  onClick={resetKnobs}
-                  title="Reset FX Knobs"
-                  className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition-colors ${
-                    darkMode
-                      ? "border-white/10 text-zinc-400 hover:text-white hover:bg-white/[0.05]"
-                      : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                  }`}
-                >
-                  ↺
-                </button>
-                <button
-                  onClick={() => setDockMinimized(!dockMinimized)}
-                  className={`lg:hidden px-2 py-1.5 rounded-lg border text-[11px] font-medium ${
-                    darkMode ? "border-white/10 text-zinc-300" : "border-slate-200 text-slate-600"
-                  }`}
-                >
-                  {dockMinimized ? "Show" : "Hide"}
-                </button>
-              </div>
-            </div>
-
-            {!dockMinimized && (
-              <>
-                <div
-                  className={`flex items-center justify-center gap-3.5 sm:gap-4 px-3.5 py-1.5 rounded-xl border ${
-                    darkMode ? "bg-white/[0.025] border-white/[0.07]" : "bg-slate-50 border-slate-200"
-                  }`}
-                >
-                  <RotaryKnob label="Cutoff" value={cutoff} onChange={setCutoff} darkMode={darkMode} />
-                  <RotaryKnob label="Res" value={resonance} onChange={setResonance} darkMode={darkMode} />
-                  <RotaryKnob label="Env" value={envelope} onChange={setEnvelope} darkMode={darkMode} />
-                  <RotaryKnob label="Space" value={spaceMix} onChange={setSpaceMix} darkMode={darkMode} />
-                  <RotaryKnob label="Macro" value={macro1} onChange={setMacro1} darkMode={darkMode} />
-                </div>
-
-                <div className="w-full lg:w-[420px] xl:w-[470px] overflow-x-auto select-none">
-                  <div className="relative h-14 min-w-[380px] w-full flex">
-                    {PIANO_NOTES.filter((n) => !n.isBlack).map((k) => {
-                      const isPressed = activeNotes.includes(k.note);
-                      return (
+                    <div className="flex items-center gap-1 text-xs">
+                      <span className="opacity-50 font-mono text-[11px] hidden sm:inline">STEP</span>
+                      {[
+                        { label: "1/16", steps: 1 },
+                        { label: "1/8", steps: 2 },
+                        { label: "1/4", steps: 4 },
+                      ].map((len) => (
                         <button
-                          key={k.note}
-                          onMouseDown={() => handlePressNote(k.note, k.freq)}
-                          onMouseUp={() => handleReleaseNote(k.note)}
-                          onMouseLeave={() => handleReleaseNote(k.note)}
-                          className={`flex-1 h-full border rounded-b-md flex flex-col justify-end items-center pb-1 transition-all ${
-                            isPressed
-                              ? "bg-blue-600 text-white border-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.75)] translate-y-0.5"
+                          key={len.steps}
+                          onClick={() => setDrawLengthSteps(len.steps)}
+                          className={`px-2 py-1 rounded-md text-[11px] font-mono font-semibold border ${
+                            drawLengthSteps === len.steps
+                              ? "bg-blue-600 text-white border-blue-500"
                               : darkMode
-                              ? "bg-zinc-100 text-zinc-800 border-zinc-400 hover:bg-blue-50"
-                              : "bg-white text-slate-500 border-slate-300 hover:bg-blue-50/70"
+                              ? "bg-zinc-900 border-white/[0.08] text-zinc-400 hover:text-white"
+                              : "bg-white border-slate-200 text-slate-600"
                           }`}
                         >
-                          <span className="text-[9px] font-mono uppercase opacity-75">{k.keyBind}</span>
+                          {len.label}
                         </button>
-                      );
-                    })}
+                      ))}
+                    </div>
 
-                    <div className="pointer-events-none absolute inset-0 flex">
-                      {PIANO_NOTES.map((k, idx) => {
-                        if (!k.isBlack) return null;
-                        const whiteKeysBefore = PIANO_NOTES.slice(0, idx).filter((n) => !n.isBlack).length;
-                        const leftPercent = (whiteKeysBefore / 10) * 100 - 3;
+                    <div className="hidden md:flex items-center gap-1 pl-1">
+                      {Object.keys(STARTER_PATTERNS).map((name) => (
+                        <button
+                          key={name}
+                          onClick={() => {
+                            setRollNotes(STARTER_PATTERNS[name]);
+                            setImportedMidiName(null);
+                          }}
+                          className={`px-2 py-1 rounded-md text-[11px] font-medium border ${
+                            darkMode
+                              ? "bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:border-blue-500"
+                              : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
+                          }`}
+                        >
+                          {name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {importedMidiName && (
+                      <span className="text-[11px] font-mono text-blue-400 max-w-[140px] truncate">
+                        🎵 {importedMidiName}
+                      </span>
+                    )}
+
+                    <button
+                      onClick={() => midiFileInputRef.current?.click()}
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
+                        darkMode
+                          ? "bg-white/[0.04] border-white/10 text-blue-400 hover:border-blue-500"
+                          : "bg-white border-slate-300 text-blue-600 hover:border-blue-500"
+                      }`}
+                    >
+                      ↑ Import .MID
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setRollNotes([]);
+                        setImportedMidiName(null);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
+                        darkMode
+                          ? "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:text-rose-400"
+                          : "bg-white border-slate-200 text-slate-600 hover:text-rose-600"
+                      }`}
+                    >
+                      Clear
+                    </button>
+
+                    <button
+                      onClick={() => setPianoRollOpen(false)}
+                      className="px-2 py-1 rounded-lg text-xs opacity-60 hover:opacity-100"
+                      title="Close Piano Roll"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  className={`rounded-xl border overflow-x-auto max-h-52 overflow-y-auto select-none ${
+                    darkMode ? "border-white/[0.08] bg-zinc-950" : "border-slate-300 bg-white"
+                  }`}
+                >
+                  <div className="min-w-[680px]">
+                    {ROLL_ROWS.map((row) => (
+                      <div
+                        key={row.note}
+                        className={`flex items-stretch h-4 border-b last:border-b-0 ${
+                          darkMode ? "border-white/[0.04]" : "border-slate-100"
+                        }`}
+                      >
+                        <button
+                          onClick={() => triggerTimedNote(row.note, 0.35)}
+                          className={`w-12 shrink-0 px-1.5 text-[10px] font-mono font-bold text-left flex items-center justify-between border-r ${
+                            row.isBlack
+                              ? darkMode
+                                ? "bg-zinc-900 text-zinc-400 border-white/[0.06]"
+                                : "bg-slate-200 text-slate-700 border-slate-300"
+                              : darkMode
+                              ? "bg-zinc-800/80 text-zinc-200 border-white/[0.06]"
+                              : "bg-slate-50 text-slate-800 border-slate-300"
+                          }`}
+                        >
+                          <span>{row.note}</span>
+                        </button>
+
+                        <div className="flex-1 grid grid-cols-16 relative">
+                          {Array.from({ length: 16 }).map((_, stepIdx) => {
+                            const startingNote = rollNotes.find(
+                              (n) => n.note === row.note && n.step === stepIdx
+                            );
+                            const coveredByPrev = rollNotes.some(
+                              (n) =>
+                                n.note === row.note &&
+                                stepIdx > n.step &&
+                                stepIdx < n.step + n.durationSteps
+                            );
+                            const isBeatStart = stepIdx % 4 === 0;
+                            const isPlayhead = currentStep === stepIdx;
+
+                            return (
+                              <div
+                                key={stepIdx}
+                                onClick={() => handleToggleRollNote(row.note, stepIdx)}
+                                className={`relative border-r cursor-pointer transition-colors ${
+                                  isBeatStart
+                                    ? darkMode
+                                      ? "border-white/15"
+                                      : "border-slate-300"
+                                    : darkMode
+                                    ? "border-white/[0.04]"
+                                    : "border-slate-100"
+                                } ${
+                                  isPlayhead
+                                    ? "bg-blue-500/20"
+                                    : row.isBlack
+                                    ? darkMode
+                                      ? "bg-zinc-950 hover:bg-zinc-800/60"
+                                      : "bg-slate-100/80 hover:bg-blue-50"
+                                    : darkMode
+                                    ? "bg-zinc-900/30 hover:bg-zinc-800/60"
+                                    : "bg-white hover:bg-blue-50"
+                                }`}
+                              >
+                                {startingNote && (
+                                  <div
+                                    style={{
+                                      width: `calc(${startingNote.durationSteps * 100}% - 2px)`,
+                                    }}
+                                    className="absolute inset-y-[1px] left-[1px] z-10 rounded-[3px] bg-blue-500 hover:bg-blue-400 shadow-xs flex items-center px-1 text-[8px] font-mono text-white font-bold pointer-events-none"
+                                  >
+                                    {startingNote.durationSteps > 1 ? row.note : ""}
+                                  </div>
+                                )}
+                                {!startingNote && coveredByPrev && <span className="sr-only">held</span>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
+              <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[265px]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-lg bg-gradient-to-br ${activeAsset.coverGradient} flex items-center justify-center text-white text-[10px] font-extrabold shrink-0`}
+                  >
+                    VP
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-blue-400 font-semibold">
+                        {activeAsset.engine}
+                      </span>
+                      {activeAsset.previewPath && (
+                        <span
+                          className={`text-[10px] font-mono ${
+                            sampleError
+                              ? "text-rose-400"
+                              : isSampleReady
+                              ? "text-emerald-400"
+                              : "text-amber-400 animate-pulse"
+                          }`}
+                        >
+                          {sampleError
+                            ? `• ${sampleError}`
+                            : isSampleReady
+                            ? "• Ready"
+                            : "• Loading..."}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs font-bold truncate max-w-[185px] mt-0.5">
+                      {activeAsset.filename}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => handleTogglePlay(activeAsset)}
+                    className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold transition-colors"
+                  >
+                    {isPlayingPreview ? "■ Stop" : "▶ Play"}
+                  </button>
+                  <button
+                    onClick={() => setPianoRollOpen((prev) => !prev)}
+                    className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
+                      pianoRollOpen
+                        ? "bg-blue-600/20 border-blue-500 text-blue-400"
+                        : darkMode
+                        ? "border-white/10 bg-white/[0.04] text-zinc-200 hover:border-blue-500"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-500"
+                    }`}
+                  >
+                    🎹 Piano Roll
+                  </button>
+                  <button
+                    onClick={resetKnobs}
+                    title="Reset FX Knobs"
+                    className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium transition-colors ${
+                      darkMode
+                        ? "border-white/10 text-zinc-400 hover:text-white hover:bg-white/[0.05]"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    ↺
+                  </button>
+                  {activeTab === "Home" && (
+                    <button
+                      onClick={() => {
+                        setIsRollPlaying(false);
+                        setPianoRollOpen(false);
+                        setHomeDeckVisible(false);
+                      }}
+                      title="Close Synth Deck"
+                      className={`px-2 py-1.5 rounded-lg border text-[11px] font-medium ${
+                        darkMode
+                          ? "border-white/10 text-zinc-400 hover:text-white"
+                          : "border-slate-200 text-slate-600"
+                      }`}
+                    >
+                      ✕
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setDockMinimized(!dockMinimized)}
+                    className={`lg:hidden px-2 py-1.5 rounded-lg border text-[11px] font-medium ${
+                      darkMode ? "border-white/10 text-zinc-300" : "border-slate-200 text-slate-600"
+                    }`}
+                  >
+                    {dockMinimized ? "Show" : "Hide"}
+                  </button>
+                </div>
+              </div>
+
+              {!dockMinimized && (
+                <>
+                  <div
+                    className={`flex items-center justify-center gap-3.5 sm:gap-4 px-3.5 py-1.5 rounded-xl border ${
+                      darkMode ? "bg-white/[0.025] border-white/[0.07]" : "bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    <RotaryKnob label="Cutoff" value={cutoff} onChange={setCutoff} darkMode={darkMode} />
+                    <RotaryKnob label="Res" value={resonance} onChange={setResonance} darkMode={darkMode} />
+                    <RotaryKnob label="Env" value={envelope} onChange={setEnvelope} darkMode={darkMode} />
+                    <RotaryKnob label="Space" value={spaceMix} onChange={setSpaceMix} darkMode={darkMode} />
+                    <RotaryKnob label="Macro" value={macro1} onChange={setMacro1} darkMode={darkMode} />
+                  </div>
+
+                  <div className="w-full lg:w-[420px] xl:w-[470px] overflow-x-auto select-none">
+                    <div className="relative h-14 min-w-[380px] w-full flex">
+                      {PIANO_NOTES.filter((n) => !n.isBlack).map((k) => {
                         const isPressed = activeNotes.includes(k.note);
                         return (
                           <button
                             key={k.note}
-                            style={{ left: `${leftPercent}%` }}
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              handlePressNote(k.note, k.freq);
-                            }}
+                            onMouseDown={() => handlePressNote(k.note, k.freq)}
                             onMouseUp={() => handleReleaseNote(k.note)}
                             onMouseLeave={() => handleReleaseNote(k.note)}
-                            className={`pointer-events-auto absolute top-0 w-[6%] h-[58%] rounded-b z-10 flex flex-col justify-end items-center pb-0.5 text-[8px] font-mono uppercase transition-all ${
+                            className={`flex-1 h-full border rounded-b-md flex flex-col justify-end items-center pb-1 transition-all ${
                               isPressed
-                                ? "bg-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.9)] translate-y-0.5"
-                                : "bg-slate-900 text-slate-400 hover:bg-slate-800 shadow"
+                                ? "bg-blue-600 text-white border-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.75)] translate-y-0.5"
+                                : darkMode
+                                ? "bg-zinc-100 text-zinc-800 border-zinc-400 hover:bg-blue-50"
+                                : "bg-white text-slate-500 border-slate-300 hover:bg-blue-50/70"
                             }`}
                           >
-                            {k.keyBind}
+                            <span className="text-[9px] font-mono uppercase opacity-75">{k.keyBind}</span>
                           </button>
                         );
                       })}
+
+                      <div className="pointer-events-none absolute inset-0 flex">
+                        {PIANO_NOTES.map((k, idx) => {
+                          if (!k.isBlack) return null;
+                          const whiteKeysBefore = PIANO_NOTES.slice(0, idx).filter((n) => !n.isBlack).length;
+                          const leftPercent = (whiteKeysBefore / 10) * 100 - 3;
+                          const isPressed = activeNotes.includes(k.note);
+                          return (
+                            <button
+                              key={k.note}
+                              style={{ left: `${leftPercent}%` }}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handlePressNote(k.note, k.freq);
+                              }}
+                              onMouseUp={() => handleReleaseNote(k.note)}
+                              onMouseLeave={() => handleReleaseNote(k.note)}
+                              className={`pointer-events-auto absolute top-0 w-[6%] h-[58%] rounded-b z-10 flex flex-col justify-end items-center pb-0.5 text-[8px] font-mono uppercase transition-all ${
+                                isPressed
+                                  ? "bg-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.9)] translate-y-0.5"
+                                  : "bg-slate-900 text-slate-400 hover:bg-slate-800 shadow"
+                              }`}
+                            >
+                              {k.keyBind}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
 
       {/* AUTH MODAL */}
       {authModalOpen && (
