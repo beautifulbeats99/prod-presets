@@ -526,6 +526,7 @@ export default function ProdPresetsMarketplace() {
   const autoPlayAfterLoadRef = useRef<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
+  // Build public URL from the capitalized `Previews` bucket
   const getPreviewUrl = useCallback((previewPath?: string | null) => {
     if (!previewPath) return null;
     const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -534,7 +535,7 @@ export default function ProdPresetsMarketplace() {
       .split("/")
       .map(encodeURIComponent)
       .join("/");
-    return `${baseUrl}/storage/v1/object/public/previews/${encodedPath}`;
+    return `${baseUrl}/storage/v1/object/public/Previews/${encodedPath}`;
   }, []);
 
   // Load live packs & presets from Supabase
