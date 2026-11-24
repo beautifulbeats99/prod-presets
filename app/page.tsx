@@ -1149,7 +1149,6 @@ export default function ProdPresetsMarketplace() {
         }`}
       >
         <div className="space-y-6">
-          {/* Brand Logo */}
           <div
             onClick={() => {
               setSelectedPack(null);
@@ -1170,7 +1169,6 @@ export default function ProdPresetsMarketplace() {
             </div>
           </div>
 
-          {/* Primary Navigation */}
           <nav className="space-y-1">
             {navItems.map((item) => {
               const active = activeTab === item.label;
@@ -1213,7 +1211,6 @@ export default function ProdPresetsMarketplace() {
             })}
           </nav>
 
-          {/* Quick Engines Shortcut */}
           <div className="pt-2 border-t border-white/[0.06] space-y-1.5">
             <div className="px-3 text-[10px] font-semibold uppercase tracking-widest opacity-40">
               Synth Engines
@@ -1243,7 +1240,6 @@ export default function ProdPresetsMarketplace() {
           </div>
         </div>
 
-        {/* Sidebar Bottom Controls */}
         <div className="space-y-2 pt-4 border-t border-white/[0.06]">
           <button
             onClick={() => setDarkMode(!darkMode)}
@@ -1261,14 +1257,12 @@ export default function ProdPresetsMarketplace() {
 
       {/* MAIN CONTENT SHELL */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* SLEEK TOP BAR WITH PILL SEARCH & CREDITS PILL */}
         <header
           className={`sticky top-0 z-20 backdrop-blur-xl border-b ${
             darkMode ? "bg-[#09090b]/85 border-white/[0.06]" : "bg-white/90 border-slate-200"
           }`}
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-7 h-16 flex items-center justify-between gap-4">
-            {/* Mobile Brand + Nav */}
             <div className="flex md:hidden items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xs">
                 VP
@@ -1291,7 +1285,6 @@ export default function ProdPresetsMarketplace() {
               </select>
             </div>
 
-            {/* Pill Search Bar */}
             <div className="relative flex-1 max-w-md">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs opacity-45">
                 🔍
@@ -1317,7 +1310,6 @@ export default function ProdPresetsMarketplace() {
               )}
             </div>
 
-            {/* Right Credits & Account Pill */}
             <div className="flex items-center gap-2.5">
               <button
                 onClick={() => (user ? setPaymentModalOpen(true) : setAuthModalOpen(true))}
@@ -1365,7 +1357,6 @@ export default function ProdPresetsMarketplace() {
 
         {/* MAIN CATALOG CANVAS */}
         <main className="max-w-7xl w-full mx-auto px-4 sm:px-7 py-6 space-y-6">
-          {/* CHECKOUT BANNER */}
           {checkoutBanner && (
             <div
               className={`rounded-xl border px-4 py-3 flex items-center justify-between text-xs font-medium ${
@@ -1385,7 +1376,6 @@ export default function ProdPresetsMarketplace() {
             </div>
           )}
 
-          {/* FILTER DROPDOWNS & UPPERCASE `+ TAG` PILLS */}
           {activeTab !== "Packs" && (
             <section className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -1448,7 +1438,6 @@ export default function ProdPresetsMarketplace() {
                 </div>
               </div>
 
-              {/* Sleek `+ TAG` Chips */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 {QUICK_TAGS.map((tag) => {
                   const active = selectedTag === tag;
@@ -1472,7 +1461,6 @@ export default function ProdPresetsMarketplace() {
             </section>
           )}
 
-          {/* HORIZONTAL PACK ARTWORK CAROUSEL (when browsing Presets/Samples) */}
           {activeTab !== "Packs" && activeTab !== "My Library" && !selectedPack && (
             <section className="space-y-2.5">
               <div className="flex items-center justify-between">
@@ -1520,7 +1508,6 @@ export default function ProdPresetsMarketplace() {
             </section>
           )}
 
-          {/* SELECTED PACK BANNER */}
           {selectedPack && (
             <section
               className={`rounded-2xl border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 ${
@@ -1556,7 +1543,6 @@ export default function ProdPresetsMarketplace() {
             </section>
           )}
 
-          {/* PACKS FULL GRID VIEW */}
           {activeTab === "Packs" && !selectedPack ? (
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {packs.map((pack) => (
@@ -1589,7 +1575,7 @@ export default function ProdPresetsMarketplace() {
               ))}
             </section>
           ) : (
-            /* BORDERLESS STUDIO SOUND LIST */
+            /* BORDERLESS STUDIO SOUND LIST WITH LOCKED COLUMN ALIGNMENT & LARGER WAVEFORMS */
             <section className="space-y-1">
               {filteredAssets.map((item) => {
                 const isCurrent = activeAsset.id === item.id;
@@ -1601,7 +1587,7 @@ export default function ProdPresetsMarketplace() {
                   <div
                     key={item.id}
                     onClick={() => setActiveAsset(item)}
-                    className={`group flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
+                    className={`group flex items-center justify-between gap-4 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
                       isCurrent
                         ? darkMode
                           ? "bg-white/[0.06] ring-1 ring-blue-500/40"
@@ -1660,40 +1646,40 @@ export default function ProdPresetsMarketplace() {
                       </div>
                     </div>
 
-                    {/* Center: Symmetrical Studio Waveform */}
-                    <div className="hidden lg:flex items-center justify-center gap-[2px] h-7 w-52 shrink-0">
+                    {/* Center: Larger Full-Width Symmetrical Studio Waveform */}
+                    <div className="hidden lg:flex items-center justify-between gap-[3px] h-9 w-64 xl:w-72 shrink-0 px-2">
                       {bars.map((height, idx) => (
                         <div
                           key={idx}
-                          style={{ height: `${Math.max(14, height)}%` }}
-                          className={`w-[2px] rounded-full transition-colors ${
+                          style={{ height: `${Math.max(16, height)}%` }}
+                          className={`flex-1 max-w-[3px] rounded-full transition-colors ${
                             isRowPlaying
                               ? "bg-blue-400 animate-pulse"
                               : isCurrent
-                              ? "bg-blue-500/80"
+                              ? "bg-blue-500/85"
                               : darkMode
-                              ? "bg-zinc-700/80 group-hover:bg-zinc-500"
+                              ? "bg-zinc-700/90 group-hover:bg-zinc-500"
                               : "bg-slate-300 group-hover:bg-blue-400"
                           }`}
                         />
                       ))}
                     </div>
 
-                    {/* Metadata Columns: Time, BPM, Key, Engine Badge */}
-                    <div className="hidden sm:flex items-center gap-5 text-[11px] font-mono uppercase tracking-wider opacity-55 shrink-0">
-                      <span className="w-10 text-right">{item.duration}</span>
+                    {/* Metadata Columns: Fixed Widths so Nothing Ever Shifts */}
+                    <div className="hidden sm:flex items-center gap-4 text-[11px] font-mono uppercase tracking-wider opacity-55 shrink-0">
+                      <span className="w-11 text-right">{item.duration}</span>
                       <span className="w-16 text-right">
                         {item.bpm ? `${item.bpm} BPM` : "--"}
                       </span>
                       <span className="w-16 text-right">{item.musicalKey}</span>
                     </div>
 
-                    {/* Tag Chips */}
+                    {/* Tag Chips: Fixed Width */}
                     <div className="hidden xl:flex items-center gap-1.5 w-36 justify-end shrink-0">
                       {item.tags.slice(0, 2).map((t) => (
                         <span
                           key={t}
-                          className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider ${
+                          className={`px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider truncate ${
                             darkMode
                               ? "bg-white/[0.04] text-zinc-400"
                               : "bg-slate-100 text-slate-600"
@@ -1704,8 +1690,8 @@ export default function ProdPresetsMarketplace() {
                       ))}
                     </div>
 
-                    {/* Right Actions */}
-                    <div className="flex items-center gap-2 shrink-0 pl-2">
+                    {/* Right Actions: Locked Width (`w-28`) so `↓ 2 CR` and `↓ Download` align identically */}
+                    <div className="flex items-center justify-end gap-2 shrink-0 w-28 sm:w-32">
                       {activeTab === "My Library" && (
                         <button
                           onClick={(e) => {
@@ -1714,13 +1700,14 @@ export default function ProdPresetsMarketplace() {
                               `Royalty-Free Commercial License Certificate generated for ${item.filename}`
                             );
                           }}
-                          className={`px-2 py-1 rounded-lg border text-[10px] font-mono uppercase ${
+                          title="Download Commercial License"
+                          className={`px-2 py-1.5 rounded-lg border text-[10px] font-mono uppercase shrink-0 ${
                             darkMode
                               ? "border-white/10 text-zinc-400 hover:text-white"
                               : "border-slate-200 text-slate-600"
                           }`}
                         >
-                          License
+                          Lic
                         </button>
                       )}
 
@@ -1729,7 +1716,7 @@ export default function ProdPresetsMarketplace() {
                           e.stopPropagation();
                           handleUnlockAsset(item);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-all ${
+                        className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition-all ${
                           isOwned
                             ? darkMode
                               ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
@@ -1764,7 +1751,6 @@ export default function ProdPresetsMarketplace() {
             : "bg-white/95 border-slate-200 shadow-[0_-8px_24px_rgba(15,23,42,0.06)]"
         }`}
       >
-        {/* EXPANDABLE INTERACTIVE MIDI PIANO ROLL DRAWER */}
         {pianoRollOpen && (
           <div
             className={`border-b ${
@@ -1978,7 +1964,6 @@ export default function ProdPresetsMarketplace() {
           </div>
         )}
 
-        {/* MAIN SYNTH DECK BAR */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
             <div className="flex items-center justify-between w-full lg:w-auto gap-3 min-w-[265px]">
