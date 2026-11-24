@@ -285,7 +285,6 @@ function parseMidiFileToRollNotes(buffer: ArrayBuffer): MidiRollNote[] {
       let runningStatus = 0;
 
       while (pos < trackEnd) {
-        // Read variable-length delta time
         let delta = 0;
         while (pos < trackEnd) {
           const b = bytes[pos++];
@@ -314,7 +313,7 @@ function parseMidiFileToRollNotes(buffer: ArrayBuffer): MidiRollNote[] {
         } else if (eventType === 0xc0 || eventType === 0xd0) {
           pos += 1;
         } else if (status === 0xff) {
-          pos++; // meta type
+          pos++;
           let metaLen = 0;
           while (pos < trackEnd) {
             const b = bytes[pos++];
@@ -345,7 +344,6 @@ function parseMidiFileToRollNotes(buffer: ArrayBuffer): MidiRollNote[] {
   const parsed: MidiRollNote[] = [];
 
   for (const ev of rawEvents) {
-    // Fold any octave into our C3 (48) .. E4 (64) playable range
     let folded = ev.noteNum;
     while (folded < 48) folded += 12;
     while (folded > 64) folded -= 12;
@@ -502,6 +500,7 @@ export default function ProdPresetsMarketplace() {
   const [activeAsset, setActiveAsset] = useState<AudioAsset>(FALLBACK_ASSETS[0]);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [isSampleReady, setIsSampleReady] = useState(false);
+  const [sampleError, setSampleError] = useState<string | null>(null);
   const [activeNotes, setActiveNotes] = useState<string[]>([]);
   const [dockMinimized, setDockMinimized] = useState(false);
 
@@ -523,7 +522,6 @@ export default function ProdPresetsMarketplace() {
 
   const samplerRef = useRef<Tone.Sampler | null>(null);
   const filterRef = useRef<Tone.Filter | null>(null);
-  const reverbRef = useRef<Tone.Reverb | null>(null);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoPlayAfterLoadRef = useRef<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -607,6 +605,7 @@ export default function ProdPresetsMarketplace() {
   // Load real .m4a audio sample into Tone.Sampler whenever activeAsset changes
   useEffect(() => {
     setIsSampleReady(false);
+    setSampleError(null);
 
     samplerRef.current?.releaseAll();
     samplerRef.current?.dispose();
@@ -620,14 +619,7 @@ export default function ProdPresetsMarketplace() {
         type: "lowpass",
         frequency: 18000,
         Q: 1,
-      });
-    }
-    if (!reverbRef.current) {
-      reverbRef.current = new Tone.Reverb({
-        decay: 2.2,
-        wet: 0.1,
       }).toDestination();
-      filterRef.current.connect(reverbRef.current);
     }
 
     const sampler = new Tone.Sampler({
@@ -645,6 +637,10 @@ export default function ProdPresetsMarketplace() {
           previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), 3500);
         }
       },
+      onerror: (err) => {
+        console.error("Failed to load preview:", previewUrl, err);
+        setSampleError("File not found in Storage");
+      },
     }).connect(filterRef.current);
 
     samplerRef.current = sampler;
@@ -656,7 +652,7 @@ export default function ProdPresetsMarketplace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAsset.id, activeAsset.previewPath, getPreviewUrl]);
 
-  // Live update Tone.js Filter, Reverb & Release from Rotary Knobs
+  // Live update Tone.js Filter & Release from Rotary Knobs
   useEffect(() => {
     if (filterRef.current) {
       const minFreq = 180;
@@ -665,13 +661,10 @@ export default function ProdPresetsMarketplace() {
       filterRef.current.frequency.rampTo(mappedFreq, 0.05);
       filterRef.current.Q.rampTo(0.7 + (resonance / 100) * 10, 0.05);
     }
-    if (reverbRef.current) {
-      reverbRef.current.wet.rampTo((spaceMix / 100) * 0.65, 0.05);
-    }
     if (samplerRef.current) {
       samplerRef.current.release = 0.2 + (envelope / 100) * 1.6;
     }
-  }, [cutoff, resonance, envelope, spaceMix]);
+  }, [cutoff, resonance, envelope]);
 
   const loadUserWallet = useCallback(
     async (userId: string) => {
@@ -1878,10 +1871,18 @@ export default function ProdPresetsMarketplace() {
                   {activeAsset.previewPath && (
                     <span
                       className={`text-[10px] font-semibold ${
-                        isSampleReady ? "text-emerald-400" : "text-amber-400 animate-pulse"
+                        sampleError
+                          ? "text-rose-400"
+                          : isSampleReady
+                          ? "text-emerald-400"
+                          : "text-amber-400 animate-pulse"
                       }`}
                     >
-                      {isSampleReady ? "● Ready" : "○ Loading..."}
+                      {sampleError
+                        ? `✕ ${sampleError}`
+                        : isSampleReady
+                        ? "● Ready"
+                        : "○ Loading..."}
                     </span>
                   )}
                 </div>
