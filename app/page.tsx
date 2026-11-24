@@ -472,12 +472,13 @@ export default function ProdPresetsMarketplace() {
   const [selectedKey, setSelectedKey] = useState<string>("All");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // Supabase Auth State
+  // Supabase Auth & Password Recovery State
   const [user, setUser] = useState<User | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot" | "reset">("signin");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
@@ -698,9 +699,17 @@ export default function ProdPresetsMarketplace() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       const nextUser = session?.user ?? null;
       setUser(nextUser);
+
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthMode("reset");
+        setAuthError(null);
+        setAuthNotice(null);
+        setAuthModalOpen(true);
+      }
+
       if (nextUser) {
         loadUserWallet(nextUser.id);
       } else {
@@ -725,6 +734,35 @@ export default function ProdPresetsMarketplace() {
     setAuthLoading(true);
     setAuthError(null);
     setAuthNotice(null);
+
+    if (authMode === "forgot") {
+      const { error } = await supabase.auth.resetPasswordForEmail(authEmail, {
+        redirectTo: `${window.location.origin}/`,
+      });
+      setAuthLoading(false);
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
+      setAuthNotice("Password reset link sent! Check your email inbox.");
+      return;
+    }
+
+    if (authMode === "reset") {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      setAuthLoading(false);
+      if (error) {
+        setAuthError(error.message);
+        return;
+      }
+      setNewPassword("");
+      setAuthModalOpen(false);
+      setAuthMode("signin");
+      alert("Password updated! You are now signed in.");
+      return;
+    }
 
     if (authMode === "signup") {
       const { data, error } = await supabase.auth.signUp({
@@ -1046,6 +1084,7 @@ export default function ProdPresetsMarketplace() {
 
   const handleUnlockAsset = async (asset: AudioAsset) => {
     if (!user) {
+      setAuthMode("signin");
       setAuthModalOpen(true);
       return;
     }
@@ -1083,6 +1122,7 @@ export default function ProdPresetsMarketplace() {
   const handleCompletePayment = async () => {
     if (!user) {
       setPaymentModalOpen(false);
+      setAuthMode("signin");
       setAuthModalOpen(true);
       return;
     }
@@ -1488,7 +1528,14 @@ export default function ProdPresetsMarketplace() {
 
             <div className="flex items-center gap-2.5">
               <button
-                onClick={() => (user ? setPaymentModalOpen(true) : setAuthModalOpen(true))}
+                onClick={() => {
+                  if (user) {
+                    setPaymentModalOpen(true);
+                  } else {
+                    setAuthMode("signin");
+                    setAuthModalOpen(true);
+                  }
+                }}
                 title="Top up credits"
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition-all ${
                   darkMode
@@ -1521,7 +1568,10 @@ export default function ProdPresetsMarketplace() {
                 </button>
               ) : (
                 <button
-                  onClick={() => setAuthModalOpen(true)}
+                  onClick={() => {
+                    setAuthMode("signin");
+                    setAuthModalOpen(true);
+                  }}
                   className="px-4 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-colors shadow-sm shadow-blue-600/25"
                 >
                   Sign In
@@ -2357,7 +2407,7 @@ export default function ProdPresetsMarketplace() {
         </footer>
       )}
 
-      {/* AUTH MODAL */}
+      {/* AUTH MODAL (SIGN IN / CREATE ACCOUNT / FORGOT PASSWORD / SET NEW PASSWORD) */}
       {authModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div
@@ -2370,9 +2420,18 @@ export default function ProdPresetsMarketplace() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold">
-                  {authMode === "signin" ? "Sign In to VirtualPresets" : "Create Producer Account"}
+                  {authMode === "signin" && "Sign In to VirtualPresets"}
+                  {authMode === "signup" && "Create Producer Account"}
+                  {authMode === "forgot" && "Reset Your Password"}
+                  {authMode === "reset" && "Set New Password"}
                 </h3>
-                <p className="text-xs opacity-60">Sync your credits & preset library across devices</p>
+                <p className="text-xs opacity-60">
+                  {authMode === "forgot"
+                    ? "We'll email you a secure password reset link"
+                    : authMode === "reset"
+                    ? "Choose a new password for your studio account"
+                    : "Sync your credits & preset library across devices"}
+                </p>
               </div>
               <button
                 onClick={() => setAuthModalOpen(false)}
@@ -2383,33 +2442,72 @@ export default function ProdPresetsMarketplace() {
             </div>
 
             <form onSubmit={handleAuthSubmit} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold opacity-75 block mb-1">Email</label>
-                <input
-                  type="email"
-                  required
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="you@studio.com"
-                  className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
-                    darkMode ? "bg-zinc-950 border-white/10" : "bg-slate-50 border-slate-200"
-                  }`}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold opacity-75 block mb-1">Password</label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
-                    darkMode ? "bg-zinc-950 border-white/10" : "bg-slate-50 border-slate-200"
-                  }`}
-                />
-              </div>
+              {authMode !== "reset" && (
+                <div>
+                  <label className="text-xs font-semibold opacity-75 block mb-1">Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="you@studio.com"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
+                      darkMode ? "bg-zinc-950 border-white/10" : "bg-slate-50 border-slate-200"
+                    }`}
+                  />
+                </div>
+              )}
+
+              {(authMode === "signin" || authMode === "signup") && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold opacity-75">Password</label>
+                    {authMode === "signin" && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode("forgot");
+                          setAuthError(null);
+                          setAuthNotice(null);
+                        }}
+                        className="text-[11px] text-blue-400 hover:underline font-medium"
+                      >
+                        Forgot password?
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
+                      darkMode ? "bg-zinc-950 border-white/10" : "bg-slate-50 border-slate-200"
+                    }`}
+                  />
+                </div>
+              )}
+
+              {authMode === "reset" && (
+                <div>
+                  <label className="text-xs font-semibold opacity-75 block mb-1">
+                    New Password (min 6 characters)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className={`w-full px-3 py-2 rounded-xl border text-xs outline-none focus:border-blue-600 ${
+                      darkMode ? "bg-zinc-950 border-white/10" : "bg-slate-50 border-slate-200"
+                    }`}
+                  />
+                </div>
+              )}
 
               {authError && <p className="text-xs text-rose-400">{authError}</p>}
               {authNotice && <p className="text-xs text-emerald-400">{authNotice}</p>}
@@ -2423,41 +2521,49 @@ export default function ProdPresetsMarketplace() {
                   ? "Please wait..."
                   : authMode === "signin"
                   ? "Sign In"
-                  : "Create Account"}
+                  : authMode === "signup"
+                  ? "Create Account"
+                  : authMode === "forgot"
+                  ? "Send Reset Link"
+                  : "Update Password"}
               </button>
             </form>
 
-            <div className="text-center text-xs opacity-75 pt-1">
-              {authMode === "signin" ? (
-                <>
-                  New to VirtualPresets?{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("signup");
-                      setAuthError(null);
-                    }}
-                    className="text-blue-400 font-semibold hover:underline"
-                  >
-                    Create an account
-                  </button>
-                </>
-              ) : (
-                <>
-                  Already have an account?{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode("signin");
-                      setAuthError(null);
-                    }}
-                    className="text-blue-400 font-semibold hover:underline"
-                  >
-                    Sign in
-                  </button>
-                </>
-              )}
-            </div>
+            {authMode !== "reset" && (
+              <div className="text-center text-xs opacity-75 pt-1">
+                {authMode === "signin" ? (
+                  <>
+                    New to VirtualPresets?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("signup");
+                        setAuthError(null);
+                        setAuthNotice(null);
+                      }}
+                      className="text-blue-400 font-semibold hover:underline"
+                    >
+                      Create an account
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Remembered your password?{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthMode("signin");
+                        setAuthError(null);
+                        setAuthNotice(null);
+                      }}
+                      className="text-blue-400 font-semibold hover:underline"
+                    >
+                      Back to sign in
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
