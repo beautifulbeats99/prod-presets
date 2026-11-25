@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import * as Tone from "tone";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase";
@@ -40,8 +40,182 @@ interface Pack {
 interface MidiRollNote {
   id: string;
   note: string;
-  step: number;
-  durationSteps: number;
+  step: number; // 0 to 127 (8 bars * 16 sixteenth-notes)
+  durationSteps: number; // 1 to 128
+}
+
+interface RollKeyInfo {
+  note: string;
+  midiNum: number;
+  freq: number;
+  isBlack: boolean;
+  isC: boolean;
+}
+
+const TOTAL_BARS = 8;
+const STEPS_PER_BAR = 16;
+const TOTAL_STEPS = TOTAL_BARS * STEPS_PER_BAR; // 128 steps
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+// 3 Full Octaves: C2 (MIDI 36) through C5 (MIDI 72)
+const ROLL_KEYS_ASC: RollKeyInfo[] = Array.from({ length: 37 }, (_, i) => {
+  const midiNum = 36 + i;
+  const name = NOTE_NAMES[midiNum % 12];
+  const octave = Math.floor(midiNum / 12) - 1;
+  const note = `${name}${octave}`;
+  const isBlack = name.includes("#");
+  const freq = 440 * Math.pow(2, (midiNum - 69) / 12);
+  return { note, midiNum, freq, isBlack, isC: name === "C" };
+});
+
+// Top-to-bottom (C5 at top, C2 at bottom)
+const ROLL_ROWS: RollKeyInfo[] = [...ROLL_KEYS_ASC].reverse();
+
+function getMidiNoteFreq(noteName: string): number {
+  const found = ROLL_KEYS_ASC.find((k) => k.note === noteName);
+  return found ? found.freq : 261.63;
+}
+
+function parseMidiFile(buffer: ArrayBuffer): {
+  notes: MidiRollNote[];
+  detectedBpm: number | null;
+} {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length < 14) return { notes: [], detectedBpm: null };
+
+  const readUint32 = (offset: number) =>
+    ((bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      bytes[offset + 3]) >>>
+    0;
+
+  const readUint16 = (offset: number) => (bytes[offset] << 8) | bytes[offset + 1];
+
+  const headerId = String.fromCharCode(...bytes.slice(0, 4));
+  if (headerId !== "MThd") return { notes: [], detectedBpm: null };
+
+  const headerLength = readUint32(4);
+  const ticksPerQuarter = readUint16(12) || 480;
+  const ticksPer16th = ticksPerQuarter / 4;
+
+  let cursor = 8 + headerLength;
+  const rawEvents: { tick: number; noteNum: number; channel: number; on: boolean }[] = [];
+  let detectedBpm: number | null = null;
+
+  while (cursor + 8 <= bytes.length) {
+    const chunkId = String.fromCharCode(...bytes.slice(cursor, cursor + 4));
+    const chunkLen = readUint32(cursor + 4);
+    const trackStart = cursor + 8;
+    const trackEnd = Math.min(bytes.length, trackStart + chunkLen);
+
+    if (chunkId === "MTrk") {
+      let pos = trackStart;
+      let absTick = 0;
+      let runningStatus = 0;
+
+      while (pos < trackEnd) {
+        let delta = 0;
+        while (pos < trackEnd) {
+          const b = bytes[pos++];
+          delta = (delta << 7) | (b & 0x7f);
+          if ((b & 0x80) === 0) break;
+        }
+        absTick += delta;
+        if (pos >= trackEnd) break;
+
+        let status = bytes[pos];
+        if (status < 0x80) {
+          status = runningStatus;
+        } else {
+          pos++;
+          if (status < 0xf0) runningStatus = status;
+        }
+
+        const eventType = status & 0xf0;
+        const channel = status & 0x0f;
+
+        if (eventType === 0x90 || eventType === 0x80) {
+          const noteNum = bytes[pos++];
+          const velocity = bytes[pos++];
+          const isNoteOn = eventType === 0x90 && velocity > 0;
+          rawEvents.push({ tick: absTick, noteNum, channel, on: isNoteOn });
+        } else if (eventType === 0xa0 || eventType === 0xb0 || eventType === 0xe0) {
+          pos += 2;
+        } else if (eventType === 0xc0 || eventType === 0xd0) {
+          pos += 1;
+        } else if (status === 0xff) {
+          const metaType = bytes[pos++];
+          let metaLen = 0;
+          while (pos < trackEnd) {
+            const b = bytes[pos++];
+            metaLen = (metaLen << 7) | (b & 0x7f);
+            if ((b & 0x80) === 0) break;
+          }
+          // Meta Event 0x51 = Set Tempo (3 bytes, microseconds per quarter note)
+          if (metaType === 0x51 && metaLen === 3 && pos + 3 <= trackEnd && detectedBpm === null) {
+            const usPerQuarter =
+              (bytes[pos] << 16) | (bytes[pos + 1] << 8) | bytes[pos + 2];
+            if (usPerQuarter > 0) {
+              const bpm = Math.round(60_000_000 / usPerQuarter);
+              detectedBpm = Math.min(240, Math.max(40, bpm));
+            }
+          }
+          pos += metaLen;
+        } else if (status === 0xf0 || status === 0xf7) {
+          let sysexLen = 0;
+          while (pos < trackEnd) {
+            const b = bytes[pos++];
+            sysexLen = (sysexLen << 7) | (b & 0x7f);
+            if ((b & 0x80) === 0) break;
+          }
+          pos += sysexLen;
+        } else {
+          break;
+        }
+      }
+    }
+
+    cursor = trackEnd;
+  }
+
+  rawEvents.sort((a, b) => a.tick - b.tick);
+
+  const activeStarts = new Map<string, number>();
+  const parsed: MidiRollNote[] = [];
+
+  for (const ev of rawEvents) {
+    let folded = ev.noteNum;
+    while (folded < 36) folded += 12;
+    while (folded > 72) folded -= 12;
+
+    const matchedKey = ROLL_KEYS_ASC.find((k) => k.midiNum === folded);
+    if (!matchedKey) continue;
+
+    const mapKey = `${ev.channel}-${ev.noteNum}`;
+
+    if (ev.on) {
+      activeStarts.set(mapKey, ev.tick);
+    } else if (activeStarts.has(mapKey)) {
+      const startTick = activeStarts.get(mapKey)!;
+      activeStarts.delete(mapKey);
+
+      const startStep = Math.round(startTick / ticksPer16th);
+      if (startStep >= TOTAL_STEPS) continue;
+
+      const rawSteps = Math.max(1, Math.round((ev.tick - startTick) / ticksPer16th));
+      const durationSteps = Math.min(TOTAL_STEPS - startStep, Math.min(32, rawSteps));
+
+      parsed.push({
+        id: `imp-${parsed.length}-${startStep}-${matchedKey.note}`,
+        note: matchedKey.note,
+        step: startStep,
+        durationSteps,
+      });
+    }
+  }
+
+  return { notes: parsed.slice(0, 512), detectedBpm };
 }
 
 const FALLBACK_PACKS: Pack[] = [
@@ -214,8 +388,6 @@ const PIANO_NOTES = [
   { note: "E4", keyBind: ";", freq: 329.63, isBlack: false, midiNum: 64 },
 ];
 
-const ROLL_ROWS = [...PIANO_NOTES].reverse();
-
 const STARTER_PATTERNS: Record<string, MidiRollNote[]> = {
   "EDM Chords": [
     { id: "c1", note: "C3", step: 0, durationSteps: 4 },
@@ -247,127 +419,617 @@ const STARTER_PATTERNS: Record<string, MidiRollNote[]> = {
   ],
 };
 
-function parseMidiFileToRollNotes(buffer: ArrayBuffer): MidiRollNote[] {
-  const bytes = new Uint8Array(buffer);
-  if (bytes.length < 14) return [];
+function LogicPianoRoll({
+  darkMode,
+  rollNotes,
+  setRollNotes,
+  rollBpm,
+  setRollBpm,
+  isRollPlaying,
+  onTogglePlay,
+  currentStep,
+  onSeekStep,
+  activeNotes,
+  onTriggerNote,
+  importedMidiName,
+  onImportMidiBuffer,
+  onClickImportButton,
+  starterPatterns,
+  onSelectStarterPattern,
+  onClearNotes,
+  onClose,
+}: {
+  darkMode: boolean;
+  rollNotes: MidiRollNote[];
+  setRollNotes: React.Dispatch<React.SetStateAction<MidiRollNote[]>>;
+  rollBpm: number;
+  setRollBpm: (bpm: number) => void;
+  isRollPlaying: boolean;
+  onTogglePlay: () => void;
+  currentStep: number | null;
+  onSeekStep: (step: number) => void;
+  activeNotes: string[];
+  onTriggerNote: (noteName: string, durationSec: number) => void;
+  importedMidiName: string | null;
+  onImportMidiBuffer: (buffer: ArrayBuffer, filename: string) => void;
+  onClickImportButton: () => void;
+  starterPatterns: Record<string, MidiRollNote[]>;
+  onSelectStarterPattern: (name: string) => void;
+  onClearNotes: () => void;
+  onClose: () => void;
+}) {
+  const [panelHeight, setPanelHeight] = useState<number>(320);
+  const [stepWidth, setStepWidth] = useState<number>(20);
+  const [rowHeight, setRowHeight] = useState<number>(18);
+  const [drawLengthSteps, setDrawLengthSteps] = useState<number>(4);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [isDragOverMidi, setIsDragOverMidi] = useState(false);
 
-  const readUint32 = (offset: number) =>
-    ((bytes[offset] << 24) |
-      (bytes[offset + 1] << 16) |
-      (bytes[offset + 2] << 8) |
-      bytes[offset + 3]) >>>
-    0;
+  const [bpmInput, setBpmInput] = useState<string>(String(rollBpm));
+  useEffect(() => {
+    setBpmInput(String(rollBpm));
+  }, [rollBpm]);
 
-  const readUint16 = (offset: number) => (bytes[offset] << 8) | bytes[offset + 1];
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const hasAutoScrolledRef = useRef(false);
 
-  const headerId = String.fromCharCode(...bytes.slice(0, 4));
-  if (headerId !== "MThd") return [];
+  useEffect(() => {
+    if (!hasAutoScrolledRef.current && scrollContainerRef.current) {
+      hasAutoScrolledRef.current = true;
+      scrollContainerRef.current.scrollTop = Math.max(0, 10 * rowHeight);
+    }
+  }, [rowHeight]);
 
-  const headerLength = readUint32(4);
-  const ticksPerQuarter = readUint16(12) || 480;
-  const ticksPer16th = ticksPerQuarter / 4;
-
-  let cursor = 8 + headerLength;
-  const rawEvents: { tick: number; noteNum: number; on: boolean }[] = [];
-
-  while (cursor + 8 <= bytes.length) {
-    const chunkId = String.fromCharCode(...bytes.slice(cursor, cursor + 4));
-    const chunkLen = readUint32(cursor + 4);
-    const trackStart = cursor + 8;
-    const trackEnd = Math.min(bytes.length, trackStart + chunkLen);
-
-    if (chunkId === "MTrk") {
-      let pos = trackStart;
-      let absTick = 0;
-      let runningStatus = 0;
-
-      while (pos < trackEnd) {
-        let delta = 0;
-        while (pos < trackEnd) {
-          const b = bytes[pos++];
-          delta = (delta << 7) | (b & 0x7f);
-          if ((b & 0x80) === 0) break;
-        }
-        absTick += delta;
-        if (pos >= trackEnd) break;
-
-        let status = bytes[pos];
-        if (status < 0x80) {
-          status = runningStatus;
-        } else {
-          pos++;
-          if (status < 0xf0) runningStatus = status;
-        }
-
-        const eventType = status & 0xf0;
-        if (eventType === 0x90 || eventType === 0x80) {
-          const noteNum = bytes[pos++];
-          const velocity = bytes[pos++];
-          const isNoteOn = eventType === 0x90 && velocity > 0;
-          rawEvents.push({ tick: absTick, noteNum, on: isNoteOn });
-        } else if (eventType === 0xa0 || eventType === 0xb0 || eventType === 0xe0) {
-          pos += 2;
-        } else if (eventType === 0xc0 || eventType === 0xd0) {
-          pos += 1;
-        } else if (status === 0xff) {
-          pos++;
-          let metaLen = 0;
-          while (pos < trackEnd) {
-            const b = bytes[pos++];
-            metaLen = (metaLen << 7) | (b & 0x7f);
-            if ((b & 0x80) === 0) break;
-          }
-          pos += metaLen;
-        } else if (status === 0xf0 || status === 0xf7) {
-          let sysexLen = 0;
-          while (pos < trackEnd) {
-            const b = bytes[pos++];
-            sysexLen = (sysexLen << 7) | (b & 0x7f);
-            if ((b & 0x80) === 0) break;
-          }
-          pos += sysexLen;
-        } else {
-          break;
-        }
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      if ((e.key === "Backspace" || e.key === "Delete") && selectedNoteId) {
+        e.preventDefault();
+        setRollNotes((prev) => prev.filter((n) => n.id !== selectedNoteId));
+        setSelectedNoteId(null);
       }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedNoteId, setRollNotes]);
+
+  const commitBpm = () => {
+    const parsed = parseInt(bpmInput, 10);
+    if (Number.isNaN(parsed)) {
+      setBpmInput(String(rollBpm));
+      return;
     }
+    const clamped = Math.min(240, Math.max(40, parsed));
+    setRollBpm(clamped);
+    setBpmInput(String(clamped));
+  };
 
-    cursor = trackEnd;
-  }
+  const handleStartPanelResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = panelHeight;
 
-  rawEvents.sort((a, b) => a.tick - b.tick);
+    const onMove = (moveEv: MouseEvent) => {
+      const deltaY = startY - moveEv.clientY;
+      const maxH = Math.floor(window.innerHeight * 0.72);
+      setPanelHeight(Math.min(maxH, Math.max(180, startHeight + deltaY)));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
-  const activeStarts = new Map<number, number>();
-  const parsed: MidiRollNote[] = [];
+  const handleNoteDragStart = (
+    e: React.MouseEvent,
+    note: MidiRollNote,
+    mode: "move" | "resize"
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedNoteId(note.id);
 
-  for (const ev of rawEvents) {
-    let folded = ev.noteNum;
-    while (folded < 48) folded += 12;
-    while (folded > 64) folded -= 12;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origStep = note.step;
+    const origDuration = note.durationSteps;
+    const origRowIdx = ROLL_ROWS.findIndex((r) => r.note === note.note);
+    let lastAuditionedRow = origRowIdx;
 
-    const matchedKey = PIANO_NOTES.find((k) => k.midiNum === folded);
-    if (!matchedKey) continue;
+    const onMove = (moveEv: MouseEvent) => {
+      const deltaSteps = Math.round((moveEv.clientX - startX) / stepWidth);
 
-    if (ev.on) {
-      activeStarts.set(ev.noteNum, ev.tick);
-    } else if (activeStarts.has(ev.noteNum)) {
-      const startTick = activeStarts.get(ev.noteNum)!;
-      activeStarts.delete(ev.noteNum);
+      if (mode === "resize") {
+        const nextDur = Math.max(1, Math.min(TOTAL_STEPS - origStep, origDuration + deltaSteps));
+        setRollNotes((prev) =>
+          prev.map((n) => (n.id === note.id ? { ...n, durationSteps: nextDur } : n))
+        );
+      } else {
+        const deltaRows = Math.round((moveEv.clientY - startY) / rowHeight);
+        const nextRowIdx = Math.min(ROLL_ROWS.length - 1, Math.max(0, origRowIdx + deltaRows));
+        const nextStep = Math.min(TOTAL_STEPS - origDuration, Math.max(0, origStep + deltaSteps));
+        const nextNoteName = ROLL_ROWS[nextRowIdx].note;
 
-      const startStep = Math.round(startTick / ticksPer16th) % 16;
-      const rawSteps = Math.max(1, Math.round((ev.tick - startTick) / ticksPer16th));
-      const durationSteps = Math.min(16 - startStep, Math.min(8, rawSteps));
+        if (nextRowIdx !== lastAuditionedRow) {
+          lastAuditionedRow = nextRowIdx;
+          onTriggerNote(nextNoteName, 0.22);
+        }
 
-      parsed.push({
-        id: `imp-${parsed.length}-${startStep}-${matchedKey.note}`,
-        note: matchedKey.note,
-        step: startStep,
-        durationSteps,
-      });
+        setRollNotes((prev) =>
+          prev.map((n) =>
+            n.id === note.id ? { ...n, step: nextStep, note: nextNoteName } : n
+          )
+        );
+      }
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const handleGridMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const step = Math.min(TOTAL_STEPS - 1, Math.max(0, Math.floor(x / stepWidth)));
+    const rowIdx = Math.min(ROLL_ROWS.length - 1, Math.max(0, Math.floor(y / rowHeight)));
+    const row = ROLL_ROWS[rowIdx];
+    if (!row) return;
+
+    const clampedDuration = Math.min(drawLengthSteps, TOTAL_STEPS - step);
+    const newNote: MidiRollNote = {
+      id: `${row.note}-${step}-${Date.now()}`,
+      note: row.note,
+      step,
+      durationSteps: clampedDuration,
+    };
+
+    setRollNotes((prev) => [...prev, newNote]);
+    setSelectedNoteId(newNote.id);
+    onTriggerNote(row.note, 0.35);
+  };
+
+  const handleDropMidi = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOverMidi(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".mid") && !file.name.toLowerCase().endsWith(".midi")) {
+      alert("Please drop a valid .mid or .midi file.");
+      return;
     }
-  }
+    const buffer = await file.arrayBuffer();
+    onImportMidiBuffer(buffer, file.name);
+  };
 
-  return parsed.slice(0, 64);
+  const rowIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    ROLL_ROWS.forEach((r, idx) => map.set(r.note, idx));
+    return map;
+  }, []);
+
+  const gridWidth = TOTAL_STEPS * stepWidth;
+  const gridHeight = ROLL_ROWS.length * rowHeight;
+
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!isDragOverMidi) setIsDragOverMidi(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setIsDragOverMidi(false);
+        }
+      }}
+      onDrop={handleDropMidi}
+      className={`relative border-b select-none ${
+        darkMode ? "bg-[#111216] border-white/[0.08]" : "bg-slate-50 border-slate-200"
+      }`}
+    >
+      {/* DRAGGABLE TOP RESIZE BAR */}
+      <div
+        onMouseDown={handleStartPanelResize}
+        title="Drag up or down to resize Piano Roll"
+        className="h-2.5 w-full cursor-ns-resize flex items-center justify-center group hover:bg-blue-500/15 transition-colors"
+      >
+        <div className="w-12 h-1 rounded-full bg-zinc-600/60 group-hover:bg-blue-400 transition-colors" />
+      </div>
+
+      {/* MIDI DRAG-OVER OVERLAY */}
+      {isDragOverMidi && (
+        <div className="absolute inset-0 z-40 bg-blue-600/20 backdrop-blur-[2px] border-2 border-dashed border-blue-400 flex items-center justify-center pointer-events-none">
+          <div className="px-5 py-3 rounded-2xl bg-[#0d0e12]/95 border border-blue-400 text-blue-300 text-sm font-bold shadow-xl">
+            Drop .MID file to load notes &amp; auto-detect BPM
+          </div>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-3 space-y-2">
+        {/* TOOLBAR */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={onTogglePlay}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                isRollPlaying
+                  ? "bg-rose-600 hover:bg-rose-700 text-white"
+                  : "bg-emerald-600 hover:bg-emerald-500 text-white"
+              }`}
+            >
+              {isRollPlaying ? "■ Stop" : "▶ Play 8 Bars"}
+            </button>
+
+            {/* FREE-TYPE BPM INPUT */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="opacity-50 font-mono text-[11px]">BPM</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={bpmInput}
+                onChange={(e) => {
+                  const cleaned = e.target.value.replace(/[^0-9]/g, "").slice(0, 3);
+                  setBpmInput(cleaned);
+                }}
+                onBlur={commitBpm}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    commitBpm();
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                title="Type BPM (40–240) and press Enter"
+                className={`w-14 px-2 py-1 rounded-md border text-xs font-mono text-center outline-none focus:border-blue-500 ${
+                  darkMode ? "bg-zinc-900 border-white/15 text-zinc-100" : "bg-white border-slate-300"
+                }`}
+              />
+            </div>
+
+            {/* DEFAULT NOTE LENGTH */}
+            <div className="flex items-center gap-1 text-xs">
+              <span className="opacity-50 font-mono text-[11px] hidden sm:inline">NOTE</span>
+              {[
+                { label: "1/16", steps: 1 },
+                { label: "1/8", steps: 2 },
+                { label: "1/4", steps: 4 },
+                { label: "1/2", steps: 8 },
+              ].map((len) => (
+                <button
+                  key={len.steps}
+                  onClick={() => setDrawLengthSteps(len.steps)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-mono font-semibold border ${
+                    drawLengthSteps === len.steps
+                      ? "bg-blue-600 text-white border-blue-500"
+                      : darkMode
+                      ? "bg-zinc-900 border-white/[0.08] text-zinc-400 hover:text-white"
+                      : "bg-white border-slate-200 text-slate-600"
+                  }`}
+                >
+                  {len.label}
+                </button>
+              ))}
+            </div>
+
+            {/* STARTER PATTERNS */}
+            <div className="hidden lg:flex items-center gap-1 pl-1">
+              {Object.keys(starterPatterns).map((name) => (
+                <button
+                  key={name}
+                  onClick={() => onSelectStarterPattern(name)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-medium border ${
+                    darkMode
+                      ? "bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:border-blue-500"
+                      : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
+                  }`}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* RIGHT CONTROLS: ZOOM, SIZE, MIDI IMPORT, CLEAR */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {importedMidiName && (
+              <span className="text-[11px] font-mono text-blue-400 max-w-[140px] truncate mr-1">
+                🎵 {importedMidiName}
+              </span>
+            )}
+
+            <div className="flex items-center rounded-lg border border-white/10 overflow-hidden text-[11px] font-mono">
+              <button
+                onClick={() => setStepWidth((w) => Math.max(10, w - 4))}
+                title="Zoom Out Horizontally"
+                className="px-2 py-1 hover:bg-white/10"
+              >
+                −
+              </button>
+              <span className="px-1.5 opacity-60 text-[10px]">ZOOM</span>
+              <button
+                onClick={() => setStepWidth((w) => Math.min(44, w + 4))}
+                title="Zoom In Horizontally"
+                className="px-2 py-1 hover:bg-white/10"
+              >
+                +
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                setPanelHeight((h) => (h < 420 ? 480 : 240));
+                setRowHeight((r) => (r < 22 ? 22 : 16));
+              }}
+              title="Toggle Enlarged / Compact Piano Roll"
+              className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
+                darkMode
+                  ? "bg-white/[0.03] border-white/10 text-zinc-300 hover:border-blue-500"
+                  : "bg-white border-slate-300 text-slate-700"
+              }`}
+            >
+              {panelHeight < 420 ? "⤢ Enlarge" : "⤡ Shrink"}
+            </button>
+
+            <button
+              onClick={onClickImportButton}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
+                darkMode
+                  ? "bg-white/[0.04] border-white/10 text-blue-400 hover:border-blue-500"
+                  : "bg-white border-slate-300 text-blue-600 hover:border-blue-500"
+              }`}
+            >
+              ↑ Import .MID
+            </button>
+
+            <button
+              onClick={() => {
+                onClearNotes();
+                setSelectedNoteId(null);
+              }}
+              className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
+                darkMode
+                  ? "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:text-rose-400"
+                  : "bg-white border-slate-200 text-slate-600 hover:text-rose-600"
+              }`}
+            >
+              Clear
+            </button>
+
+            <button
+              onClick={onClose}
+              className="px-2 py-1 rounded-lg text-xs opacity-60 hover:opacity-100"
+              title="Close Piano Roll"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* LOGIC PRO X STYLE CANVAS */}
+        <div
+          ref={scrollContainerRef}
+          style={{ height: `${panelHeight}px` }}
+          className={`rounded-xl border overflow-auto relative ${
+            darkMode ? "border-white/[0.1] bg-[#16181d]" : "border-slate-300 bg-white"
+          }`}
+        >
+          <div style={{ width: `${56 + gridWidth}px` }} className="relative">
+            {/* STICKY TOP BAR RULER (BARS 1–8) */}
+            <div
+              className={`sticky top-0 z-30 flex h-6 border-b ${
+                darkMode
+                  ? "bg-[#1c1e26] border-white/10 text-zinc-400"
+                  : "bg-slate-100 border-slate-300 text-slate-600"
+              }`}
+            >
+              <div
+                className={`sticky left-0 z-40 w-14 shrink-0 border-r flex items-center justify-center text-[9px] font-mono uppercase opacity-60 ${
+                  darkMode ? "bg-[#1c1e26] border-white/10" : "bg-slate-100 border-slate-300"
+                }`}
+              >
+                C2–C5
+              </div>
+
+              <div
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickedStep = Math.min(
+                    TOTAL_STEPS - 1,
+                    Math.max(0, Math.floor((e.clientX - rect.left) / stepWidth))
+                  );
+                  onSeekStep(clickedStep);
+                }}
+                style={{ width: `${gridWidth}px` }}
+                className="relative flex cursor-pointer"
+                title="Click ruler to jump playhead"
+              >
+                {Array.from({ length: TOTAL_BARS }).map((_, barIdx) => (
+                  <div
+                    key={barIdx}
+                    style={{ width: `${STEPS_PER_BAR * stepWidth}px` }}
+                    className={`relative border-r flex items-center pl-1.5 text-[10px] font-mono font-bold ${
+                      darkMode ? "border-white/15" : "border-slate-300"
+                    }`}
+                  >
+                    <span>{barIdx + 1}</span>
+                    {[1, 2, 3].map((beat) => (
+                      <span
+                        key={beat}
+                        style={{ left: `${beat * 4 * stepWidth}px` }}
+                        className="absolute bottom-0 h-2 border-l border-white/15 text-[8px] pl-1 opacity-40"
+                      >
+                        {stepWidth >= 18 ? `${barIdx + 1}.${beat + 1}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+
+                {currentStep !== null && (
+                  <div
+                    style={{ left: `${currentStep * stepWidth}px` }}
+                    className="absolute top-0 bottom-0 w-[2px] bg-blue-400 pointer-events-none"
+                  >
+                    <div className="w-2.5 h-2.5 -ml-[4px] bg-blue-400 rounded-b-sm" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* BODY: STICKY LEFT PIANO KEYS + INTERACTIVE NOTE GRID */}
+            <div className="flex relative">
+              <div className="sticky left-0 z-20 w-14 shrink-0 border-r border-white/10">
+                {ROLL_ROWS.map((row) => {
+                  const isActive = activeNotes.includes(row.note);
+                  return (
+                    <button
+                      key={row.note}
+                      onMouseDown={() => onTriggerNote(row.note, 0.35)}
+                      style={{ height: `${rowHeight}px` }}
+                      className={`w-full px-1.5 text-[9px] font-mono flex items-center justify-between border-b transition-colors ${
+                        isActive
+                          ? "bg-blue-500 text-white font-bold border-blue-400"
+                          : row.isBlack
+                          ? darkMode
+                            ? "bg-[#0e0f13] text-zinc-500 border-white/[0.04] hover:bg-zinc-800"
+                            : "bg-slate-800 text-slate-300 border-slate-700"
+                          : darkMode
+                          ? "bg-[#e4e4e7] text-zinc-800 border-zinc-300 hover:bg-blue-100"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-blue-50"
+                      }`}
+                    >
+                      <span className={row.isC ? "font-extrabold text-blue-600" : ""}>
+                        {row.isC || !row.isBlack ? row.note : ""}
+                      </span>
+                      {row.isBlack && (
+                        <span className="w-2 h-1.5 rounded-xs bg-black/50" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                onMouseDown={handleGridMouseDown}
+                style={{ width: `${gridWidth}px`, height: `${gridHeight}px` }}
+                className="relative cursor-crosshair"
+              >
+                {ROLL_ROWS.map((row, rIdx) => (
+                  <div
+                    key={row.note}
+                    style={{ top: `${rIdx * rowHeight}px`, height: `${rowHeight}px` }}
+                    className={`absolute inset-x-0 border-b pointer-events-none ${
+                      row.isC
+                        ? darkMode
+                          ? "border-white/15 bg-white/[0.03]"
+                          : "border-slate-300 bg-blue-50/30"
+                        : row.isBlack
+                        ? darkMode
+                          ? "border-white/[0.04] bg-[#101216]"
+                          : "border-slate-200/70 bg-slate-100/80"
+                        : darkMode
+                        ? "border-white/[0.04] bg-[#191b22]"
+                        : "border-slate-200/70 bg-white"
+                    }`}
+                  />
+                ))}
+
+                {Array.from({ length: TOTAL_STEPS }).map((_, sIdx) => {
+                  const isBar = sIdx % 16 === 0;
+                  const isBeat = sIdx % 4 === 0;
+                  return (
+                    <div
+                      key={sIdx}
+                      style={{ left: `${sIdx * stepWidth}px` }}
+                      className={`absolute top-0 bottom-0 border-l pointer-events-none ${
+                        isBar
+                          ? darkMode
+                            ? "border-white/20"
+                            : "border-slate-400"
+                          : isBeat
+                          ? darkMode
+                            ? "border-white/10"
+                            : "border-slate-300"
+                          : darkMode
+                          ? "border-white/[0.035]"
+                          : "border-slate-200/60"
+                      }`}
+                    />
+                  );
+                })}
+
+                {rollNotes.map((n) => {
+                  const rowIdx = rowIndexMap.get(n.note);
+                  if (rowIdx === undefined) return null;
+                  const isSelected = selectedNoteId === n.id;
+
+                  return (
+                    <div
+                      key={n.id}
+                      onMouseDown={(e) => handleNoteDragStart(e, n, "move")}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setRollNotes((prev) => prev.filter((item) => item.id !== n.id));
+                        if (selectedNoteId === n.id) setSelectedNoteId(null);
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setRollNotes((prev) => prev.filter((item) => item.id !== n.id));
+                        if (selectedNoteId === n.id) setSelectedNoteId(null);
+                      }}
+                      style={{
+                        left: `${n.step * stepWidth + 1}px`,
+                        top: `${rowIdx * rowHeight + 1}px`,
+                        width: `${Math.max(stepWidth - 2, n.durationSteps * stepWidth - 2)}px`,
+                        height: `${rowHeight - 2}px`,
+                      }}
+                      title={`${n.note} • Drag to move, drag right edge to resize, double-click or right-click to delete`}
+                      className={`absolute z-10 rounded-[4px] flex items-center justify-between pl-1.5 pr-1 cursor-grab active:cursor-grabbing shadow-sm transition-shadow ${
+                        isSelected
+                          ? "bg-gradient-to-r from-cyan-400 to-blue-500 ring-1 ring-white text-slate-950 font-bold"
+                          : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-semibold"
+                      }`}
+                    >
+                      <span className="text-[9px] font-mono truncate pointer-events-none leading-none">
+                        {n.durationSteps * stepWidth >= 26 ? n.note : ""}
+                      </span>
+
+                      <div
+                        onMouseDown={(e) => handleNoteDragStart(e, n, "resize")}
+                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/40 rounded-r-[4px]"
+                      />
+                    </div>
+                  );
+                })}
+
+                {currentStep !== null && (
+                  <div
+                    style={{ left: `${currentStep * stepWidth}px` }}
+                    className="absolute top-0 bottom-0 w-[2px] bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.9)] z-20 pointer-events-none"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] font-mono opacity-45">
+          <span>
+            Click grid to draw • Drag note to move • Drag right edge to resize • Double-click / Right-click / Delete to remove
+          </span>
+          <span className="hidden sm:inline">Drag &amp; drop any .MID file here (auto-detects BPM)</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function RotaryKnob({
@@ -503,13 +1165,13 @@ export default function ProdPresetsMarketplace() {
   const [dockMinimized, setDockMinimized] = useState(false);
   const [homeDeckVisible, setHomeDeckVisible] = useState(false);
 
-  // Interactive MIDI Piano Roll Sequencer State
+  // Interactive 8-Bar MIDI Piano Roll Sequencer State
   const [pianoRollOpen, setPianoRollOpen] = useState(false);
   const [rollNotes, setRollNotes] = useState<MidiRollNote[]>(STARTER_PATTERNS["EDM Chords"]);
-  const [drawLengthSteps, setDrawLengthSteps] = useState<number>(2);
   const [rollBpm, setRollBpm] = useState<number>(128);
   const [isRollPlaying, setIsRollPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
+  const playheadStepRef = useRef<number>(0);
   const [importedMidiName, setImportedMidiName] = useState<string | null>(null);
   const midiFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -596,7 +1258,7 @@ export default function ProdPresetsMarketplace() {
   }, [supabase]);
 
   useEffect(() => {
-    if (activeAsset.bpm && activeAsset.bpm >= 60 && activeAsset.bpm <= 200) {
+    if (activeAsset.bpm && activeAsset.bpm >= 40 && activeAsset.bpm <= 240) {
       setRollBpm(activeAsset.bpm);
     }
   }, [activeAsset.id, activeAsset.bpm]);
@@ -869,16 +1531,13 @@ export default function ProdPresetsMarketplace() {
 
   const triggerTimedNote = useCallback(
     async (noteName: string, durationSec: number) => {
-      const found = PIANO_NOTES.find((n) => n.note === noteName);
-      if (!found) return;
-
       if (activeAsset.previewPath) {
         await Tone.start();
         if (samplerRef.current && isSampleReady) {
           samplerRef.current.triggerAttackRelease(noteName, durationSec);
         }
       } else {
-        triggerFallbackOsc(found.freq, durationSec);
+        triggerFallbackOsc(getMidiNoteFreq(noteName), durationSec);
       }
     },
     [activeAsset.previewPath, isSampleReady, triggerFallbackOsc]
@@ -890,11 +1549,10 @@ export default function ProdPresetsMarketplace() {
       return;
     }
 
-    let stepIndex = 0;
     const stepMs = (60 / rollBpm / 4) * 1000;
 
     const tick = () => {
-      const activeStep = stepIndex % 16;
+      const activeStep = playheadStepRef.current % TOTAL_STEPS;
       setCurrentStep(activeStep);
 
       const notesAtStep = rollNotes.filter((n) => n.step === activeStep);
@@ -906,13 +1564,8 @@ export default function ProdPresetsMarketplace() {
         activeNames.push(item.note);
       }
 
-      if (activeNames.length > 0) {
-        setActiveNotes(activeNames);
-      } else {
-        setActiveNotes([]);
-      }
-
-      stepIndex++;
+      setActiveNotes(activeNames);
+      playheadStepRef.current = (activeStep + 1) % TOTAL_STEPS;
     };
 
     tick();
@@ -926,24 +1579,21 @@ export default function ProdPresetsMarketplace() {
     };
   }, [isRollPlaying, rollBpm, rollNotes, triggerTimedNote]);
 
-  const handleToggleRollNote = (noteName: string, step: number) => {
-    const existing = rollNotes.find(
-      (n) => n.note === noteName && step >= n.step && step < n.step + n.durationSteps
-    );
-
-    if (existing) {
-      setRollNotes((prev) => prev.filter((n) => n.id !== existing.id));
-    } else {
-      const clampedDuration = Math.min(drawLengthSteps, 16 - step);
-      const newNote: MidiRollNote = {
-        id: `${noteName}-${step}-${Date.now()}`,
-        note: noteName,
-        step,
-        durationSteps: clampedDuration,
-      };
-      setRollNotes((prev) => [...prev, newNote]);
-      triggerTimedNote(noteName, 0.35);
+  const handleImportMidiBuffer = async (buffer: ArrayBuffer, filename: string) => {
+    const { notes, detectedBpm } = parseMidiFile(buffer);
+    if (notes.length === 0) {
+      alert("No playable notes found in that MIDI file.");
+      return;
     }
+    setRollNotes(notes);
+    if (detectedBpm) {
+      setRollBpm(detectedBpm);
+    }
+    setImportedMidiName(filename);
+    setPianoRollOpen(true);
+    playheadStepRef.current = 0;
+    await Tone.start();
+    setIsRollPlaying(true);
   };
 
   const handleImportMidiFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -951,16 +1601,7 @@ export default function ProdPresetsMarketplace() {
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      const parsed = parseMidiFileToRollNotes(buffer);
-      if (parsed.length === 0) {
-        alert("No playable notes found in that MIDI file.");
-        return;
-      }
-      setRollNotes(parsed);
-      setImportedMidiName(file.name);
-      setPianoRollOpen(true);
-      await Tone.start();
-      setIsRollPlaying(true);
+      await handleImportMidiBuffer(buffer, file.name);
     } catch {
       alert("Unable to read that .mid file. Please try another standard MIDI file.");
     } finally {
@@ -1198,7 +1839,6 @@ export default function ProdPresetsMarketplace() {
             : "hover:bg-white hover:shadow-2xs"
         }`}
       >
-        {/* Left: Cover Art + Hover Play Overlay + Title/Subtext */}
         <div className="flex items-center gap-3.5 min-w-0 flex-1">
           <button
             onClick={(e) => {
@@ -1247,7 +1887,6 @@ export default function ProdPresetsMarketplace() {
           </div>
         </div>
 
-        {/* Center: Compact Fluid Waveform that scales smoothly with window width */}
         <div className="hidden md:flex items-center justify-between gap-[2px] h-7 flex-1 max-w-[185px] min-w-[72px] px-1">
           {bars.map((height, idx) => (
             <div
@@ -1266,14 +1905,12 @@ export default function ProdPresetsMarketplace() {
           ))}
         </div>
 
-        {/* Metadata Columns: Fixed Widths */}
         <div className="hidden sm:flex items-center gap-4 text-[11px] font-mono uppercase tracking-wider opacity-55 shrink-0">
           <span className="w-10 text-right">{item.duration}</span>
           <span className="w-16 text-right">{item.bpm ? `${item.bpm} BPM` : "--"}</span>
           <span className="w-16 text-right">{item.musicalKey}</span>
         </div>
 
-        {/* Tag Chips: Fixed Width */}
         <div className="hidden xl:flex items-center gap-1.5 w-32 justify-end shrink-0">
           {item.tags.slice(0, 2).map((t) => (
             <span
@@ -1287,7 +1924,6 @@ export default function ProdPresetsMarketplace() {
           ))}
         </div>
 
-        {/* Right Actions: Locked Width (`w-32 sm:w-36`) with ALL CAPS labels */}
         <div className="flex items-center justify-end gap-2 shrink-0 w-32 sm:w-36">
           {activeTab === "My Library" && (
             <button
@@ -1605,7 +2241,6 @@ export default function ProdPresetsMarketplace() {
           {/* DEDICATED HOME PAGE */}
           {activeTab === "Home" && (
             <div className="space-y-9">
-              {/* Hero Banner */}
               <section
                 className={`relative rounded-3xl border overflow-hidden p-7 sm:p-11 ${
                   darkMode
@@ -1663,7 +2298,6 @@ export default function ProdPresetsMarketplace() {
                 </div>
               </section>
 
-              {/* Supported Synth Engines Grid */}
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
@@ -1732,7 +2366,6 @@ export default function ProdPresetsMarketplace() {
                 </div>
               </section>
 
-              {/* Featured Sound Packs */}
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
@@ -1779,7 +2412,6 @@ export default function ProdPresetsMarketplace() {
                 </div>
               </section>
 
-              {/* Trending Presets Preview List */}
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h2 className="text-[11px] font-mono uppercase tracking-widest opacity-45">
@@ -1799,7 +2431,7 @@ export default function ProdPresetsMarketplace() {
             </div>
           )}
 
-          {/* CATALOG FILTER BAR (Presets / Samples / My Library) */}
+          {/* CATALOG FILTER BAR */}
           {activeTab !== "Home" && activeTab !== "Packs" && (
             <section className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -2016,7 +2648,7 @@ export default function ProdPresetsMarketplace() {
         </main>
       </div>
 
-      {/* BOTTOM DOCKED SYNTH DECK (HIDDEN ON HOME UNTIL INTERACTED) */}
+      {/* BOTTOM DOCKED SYNTH DECK */}
       {showSynthDeck && (
         <footer
           className={`fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur-2xl transition-colors ${
@@ -2026,216 +2658,40 @@ export default function ProdPresetsMarketplace() {
           }`}
         >
           {pianoRollOpen && (
-            <div
-              className={`border-b ${
-                darkMode ? "bg-[#090a0d] border-white/[0.07]" : "bg-slate-50 border-slate-200"
-              }`}
-            >
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      onClick={async () => {
-                        await Tone.start();
-                        setIsRollPlaying((p) => !p);
-                      }}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                        isRollPlaying
-                          ? "bg-rose-600 hover:bg-rose-700 text-white"
-                          : "bg-emerald-600 hover:bg-emerald-500 text-white"
-                      }`}
-                    >
-                      {isRollPlaying ? "■ Stop Loop" : "▶ Play MIDI Loop"}
-                    </button>
-
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="opacity-50 font-mono text-[11px]">BPM</span>
-                      <input
-                        type="number"
-                        min={60}
-                        max={200}
-                        value={rollBpm}
-                        onChange={(e) =>
-                          setRollBpm(Math.min(200, Math.max(60, Number(e.target.value) || 128)))
-                        }
-                        className={`w-14 px-2 py-1 rounded-md border text-xs font-mono ${
-                          darkMode ? "bg-zinc-900 border-white/10" : "bg-white border-slate-300"
-                        }`}
-                      />
-                    </div>
-
-                    <div className="flex items-center gap-1 text-xs">
-                      <span className="opacity-50 font-mono text-[11px] hidden sm:inline">STEP</span>
-                      {[
-                        { label: "1/16", steps: 1 },
-                        { label: "1/8", steps: 2 },
-                        { label: "1/4", steps: 4 },
-                      ].map((len) => (
-                        <button
-                          key={len.steps}
-                          onClick={() => setDrawLengthSteps(len.steps)}
-                          className={`px-2 py-1 rounded-md text-[11px] font-mono font-semibold border ${
-                            drawLengthSteps === len.steps
-                              ? "bg-blue-600 text-white border-blue-500"
-                              : darkMode
-                              ? "bg-zinc-900 border-white/[0.08] text-zinc-400 hover:text-white"
-                              : "bg-white border-slate-200 text-slate-600"
-                          }`}
-                        >
-                          {len.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="hidden md:flex items-center gap-1 pl-1">
-                      {Object.keys(STARTER_PATTERNS).map((name) => (
-                        <button
-                          key={name}
-                          onClick={() => {
-                            setRollNotes(STARTER_PATTERNS[name]);
-                            setImportedMidiName(null);
-                          }}
-                          className={`px-2 py-1 rounded-md text-[11px] font-medium border ${
-                            darkMode
-                              ? "bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:border-blue-500"
-                              : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
-                          }`}
-                        >
-                          {name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {importedMidiName && (
-                      <span className="text-[11px] font-mono text-blue-400 max-w-[140px] truncate">
-                        🎵 {importedMidiName}
-                      </span>
-                    )}
-
-                    <button
-                      onClick={() => midiFileInputRef.current?.click()}
-                      className={`px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
-                        darkMode
-                          ? "bg-white/[0.04] border-white/10 text-blue-400 hover:border-blue-500"
-                          : "bg-white border-slate-300 text-blue-600 hover:border-blue-500"
-                      }`}
-                    >
-                      ↑ Import .MID
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setRollNotes([]);
-                        setImportedMidiName(null);
-                      }}
-                      className={`px-2.5 py-1 rounded-lg border text-xs font-medium ${
-                        darkMode
-                          ? "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:text-rose-400"
-                          : "bg-white border-slate-200 text-slate-600 hover:text-rose-600"
-                      }`}
-                    >
-                      Clear
-                    </button>
-
-                    <button
-                      onClick={() => setPianoRollOpen(false)}
-                      className="px-2 py-1 rounded-lg text-xs opacity-60 hover:opacity-100"
-                      title="Close Piano Roll"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  className={`rounded-xl border overflow-x-auto max-h-52 overflow-y-auto select-none ${
-                    darkMode ? "border-white/[0.08] bg-zinc-950" : "border-slate-300 bg-white"
-                  }`}
-                >
-                  <div className="min-w-[680px]">
-                    {ROLL_ROWS.map((row) => (
-                      <div
-                        key={row.note}
-                        className={`flex items-stretch h-4 border-b last:border-b-0 ${
-                          darkMode ? "border-white/[0.04]" : "border-slate-100"
-                        }`}
-                      >
-                        <button
-                          onClick={() => triggerTimedNote(row.note, 0.35)}
-                          className={`w-12 shrink-0 px-1.5 text-[10px] font-mono font-bold text-left flex items-center justify-between border-r ${
-                            row.isBlack
-                              ? darkMode
-                                ? "bg-zinc-900 text-zinc-400 border-white/[0.06]"
-                                : "bg-slate-200 text-slate-700 border-slate-300"
-                              : darkMode
-                              ? "bg-zinc-800/80 text-zinc-200 border-white/[0.06]"
-                              : "bg-slate-50 text-slate-800 border-slate-300"
-                          }`}
-                        >
-                          <span>{row.note}</span>
-                        </button>
-
-                        <div className="flex-1 grid grid-cols-16 relative">
-                          {Array.from({ length: 16 }).map((_, stepIdx) => {
-                            const startingNote = rollNotes.find(
-                              (n) => n.note === row.note && n.step === stepIdx
-                            );
-                            const coveredByPrev = rollNotes.some(
-                              (n) =>
-                                n.note === row.note &&
-                                stepIdx > n.step &&
-                                stepIdx < n.step + n.durationSteps
-                            );
-                            const isBeatStart = stepIdx % 4 === 0;
-                            const isPlayhead = currentStep === stepIdx;
-
-                            return (
-                              <div
-                                key={stepIdx}
-                                onClick={() => handleToggleRollNote(row.note, stepIdx)}
-                                className={`relative border-r cursor-pointer transition-colors ${
-                                  isBeatStart
-                                    ? darkMode
-                                      ? "border-white/15"
-                                      : "border-slate-300"
-                                    : darkMode
-                                    ? "border-white/[0.04]"
-                                    : "border-slate-100"
-                                } ${
-                                  isPlayhead
-                                    ? "bg-blue-500/20"
-                                    : row.isBlack
-                                    ? darkMode
-                                      ? "bg-zinc-950 hover:bg-zinc-800/60"
-                                      : "bg-slate-100/80 hover:bg-blue-50"
-                                    : darkMode
-                                    ? "bg-zinc-900/30 hover:bg-zinc-800/60"
-                                    : "bg-white hover:bg-blue-50"
-                                }`}
-                              >
-                                {startingNote && (
-                                  <div
-                                    style={{
-                                      width: `calc(${startingNote.durationSteps * 100}% - 2px)`,
-                                    }}
-                                    className="absolute inset-y-[1px] left-[1px] z-10 rounded-[3px] bg-blue-500 hover:bg-blue-400 shadow-xs flex items-center px-1 text-[8px] font-mono text-white font-bold pointer-events-none"
-                                  >
-                                    {startingNote.durationSteps > 1 ? row.note : ""}
-                                  </div>
-                                )}
-                                {!startingNote && coveredByPrev && <span className="sr-only">held</span>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <LogicPianoRoll
+              darkMode={darkMode}
+              rollNotes={rollNotes}
+              setRollNotes={setRollNotes}
+              rollBpm={rollBpm}
+              setRollBpm={setRollBpm}
+              isRollPlaying={isRollPlaying}
+              onTogglePlay={async () => {
+                await Tone.start();
+                if (!isRollPlaying) playheadStepRef.current = currentStep ?? 0;
+                setIsRollPlaying((p) => !p);
+              }}
+              currentStep={currentStep}
+              onSeekStep={(step) => {
+                playheadStepRef.current = step;
+                setCurrentStep(step);
+              }}
+              activeNotes={activeNotes}
+              onTriggerNote={triggerTimedNote}
+              importedMidiName={importedMidiName}
+              onImportMidiBuffer={handleImportMidiBuffer}
+              onClickImportButton={() => midiFileInputRef.current?.click()}
+              starterPatterns={STARTER_PATTERNS}
+              onSelectStarterPattern={(name) => {
+                setRollNotes(STARTER_PATTERNS[name]);
+                setImportedMidiName(null);
+                playheadStepRef.current = 0;
+              }}
+              onClearNotes={() => {
+                setRollNotes([]);
+                setImportedMidiName(null);
+              }}
+              onClose={() => setPianoRollOpen(false)}
+            />
           )}
 
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5">
@@ -2407,7 +2863,7 @@ export default function ProdPresetsMarketplace() {
         </footer>
       )}
 
-      {/* AUTH MODAL (SIGN IN / CREATE ACCOUNT / FORGOT PASSWORD / SET NEW PASSWORD) */}
+      {/* AUTH MODAL */}
       {authModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div
