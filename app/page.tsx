@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase";
 
 type TabType = "Home" | "Presets" | "Samples" | "Packs" | "My Library";
 type SynthEngine = "All" | "Analog Lab" | "Serum" | "Vital" | "Omnisphere" | "WAV";
+type PresetMidiCategory = "arp" | "bass" | "keys" | "pad" | "lead" | "chords";
 
 interface AudioAsset {
   id: string;
@@ -44,6 +45,11 @@ interface MidiRollNote {
   durationSteps: number; // 1 to 128
 }
 
+interface MidiVariation {
+  name: string;
+  notes: MidiRollNote[];
+}
+
 interface RollKeyInfo {
   note: string;
   midiNum: number;
@@ -56,7 +62,7 @@ const TOTAL_BARS = 8;
 const STEPS_PER_BAR = 16;
 const TOTAL_STEPS = TOTAL_BARS * STEPS_PER_BAR; // 128 steps
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const FAST_CUT_SEC = 0.015; // 15ms perceptually instant fade (prevents audio clicks)
+const FAST_CUT_SEC = 0.015; // 15ms perceptually instant fade (prevents clicks)
 
 // 3 Full Octaves: C2 (MIDI 36) through C5 (MIDI 72)
 const ROLL_KEYS_ASC: RollKeyInfo[] = Array.from({ length: 37 }, (_, i) => {
@@ -75,6 +81,418 @@ const ROLL_ROWS: RollKeyInfo[] = [...ROLL_KEYS_ASC].reverse();
 function getMidiNoteFreq(noteName: string): number {
   const found = ROLL_KEYS_ASC.find((k) => k.note === noteName);
   return found ? found.freq : 261.63;
+}
+
+// Helper to build compact 8-bar MIDI arrays cleanly
+type RawNoteTuple = [string, number, number]; // [noteName, step, durationSteps]
+
+function buildNotes(prefix: string, tuples: RawNoteTuple[]): MidiRollNote[] {
+  return tuples.map(([note, step, durationSteps], idx) => ({
+    id: `${prefix}-${idx}-${step}-${note}`,
+    note,
+    step,
+    durationSteps,
+  }));
+}
+
+function tileTo8Bars(prefix: string, motif: RawNoteTuple[], motifSteps: number): MidiRollNote[] {
+  const out: MidiRollNote[] = [];
+  let count = 0;
+  for (let offset = 0; offset < TOTAL_STEPS; offset += motifSteps) {
+    for (const [note, step, dur] of motif) {
+      const absStep = offset + step;
+      if (absStep >= TOTAL_STEPS) continue;
+      out.push({
+        id: `${prefix}-${count++}-${absStep}-${note}`,
+        note,
+        step: absStep,
+        durationSteps: Math.min(dur, TOTAL_STEPS - absStep),
+      });
+    }
+  }
+  return out;
+}
+
+function chordBlock(notes: string[], step: number, durationSteps: number): RawNoteTuple[] {
+  return notes.map((n) => [n, step, durationSteps]);
+}
+
+// 4 MIDI Variations Per Preset Type (All C2–C5, full 8 bars)
+const MIDI_BANKS: Record<PresetMidiCategory, MidiVariation[]> = {
+  // ARP / SEQUENCER: Defaults to 1 single held C3 note
+  arp: [
+    {
+      name: "C3 Hold",
+      notes: buildNotes("arp1", [["C3", 0, 128]]),
+    },
+    {
+      name: "C3 2-Bar",
+      notes: tileTo8Bars("arp2", [["C3", 0, 32]], 32),
+    },
+    {
+      name: "C3 1-Bar",
+      notes: tileTo8Bars("arp3", [["C3", 0, 16]], 16),
+    },
+    {
+      name: "Root Holds",
+      notes: buildNotes("arp4", [
+        ["C3", 0, 32],
+        ["G#2", 32, 32],
+        ["D#3", 64, 32],
+        ["A#2", 96, 32],
+      ]),
+    },
+  ],
+
+  // BASS: 4 distinct low-octave basslines
+  bass: [
+    {
+      name: "EDM Drive",
+      notes: tileTo8Bars(
+        "bs1",
+        [
+          ["C2", 0, 2], ["C2", 2, 2], ["C2", 4, 2], ["C2", 6, 2],
+          ["C2", 8, 2], ["C2", 10, 2], ["D#2", 12, 2], ["F2", 14, 2],
+          ["G#2", 16, 2], ["G#2", 18, 2], ["G#2", 20, 2], ["G#2", 22, 2],
+          ["G#2", 24, 2], ["G#2", 26, 2], ["G2", 28, 2], ["F2", 30, 2],
+          ["D#2", 32, 2], ["D#2", 34, 2], ["D#2", 36, 2], ["D#2", 38, 2],
+          ["D#2", 40, 2], ["D#2", 42, 2], ["F2", 44, 2], ["G2", 46, 2],
+          ["A#2", 48, 2], ["A#2", 50, 2], ["A#2", 52, 2], ["A#2", 54, 2],
+          ["G2", 56, 2], ["G2", 58, 2], ["F2", 60, 2], ["D#2", 62, 2],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Sub Bounce",
+      notes: tileTo8Bars(
+        "bs2",
+        [
+          ["C2", 0, 3], ["C3", 4, 2], ["C2", 6, 2], ["G2", 10, 3], ["F2", 14, 2],
+          ["D#2", 16, 3], ["D#3", 20, 2], ["D#2", 22, 2], ["A#2", 26, 3], ["G2", 30, 2],
+          ["G#2", 32, 3], ["G#2", 36, 2], ["G2", 38, 2], ["F2", 42, 3], ["D#2", 46, 2],
+          ["G2", 48, 4], ["F2", 54, 2], ["D#2", 56, 3], ["D2", 60, 4],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Deep Rolling",
+      notes: tileTo8Bars(
+        "bs3",
+        [
+          ["C2", 0, 3], ["C2", 3, 3], ["D#2", 6, 2], ["F2", 8, 3], ["G2", 11, 3], ["F2", 14, 2],
+          ["G#2", 16, 3], ["G#2", 19, 3], ["G2", 22, 2], ["F2", 24, 3], ["D#2", 27, 3], ["D2", 30, 2],
+        ],
+        32
+      ),
+    },
+    {
+      name: "Trap 808",
+      notes: tileTo8Bars(
+        "bs4",
+        [
+          ["C2", 0, 6], ["C2", 6, 4], ["C2", 10, 4], ["D#2", 14, 2],
+          ["G#2", 16, 6], ["G#2", 22, 4], ["G2", 26, 6],
+          ["F2", 32, 6], ["F2", 38, 4], ["G2", 42, 4], ["G#2", 46, 2],
+          ["G2", 48, 6], ["F2", 54, 4], ["D#2", 58, 6],
+        ],
+        64
+      ),
+    },
+  ],
+
+  // PADS: 4 beautiful 4-chord progressions (2 bars per chord = 8 bars)
+  pad: [
+    {
+      name: "Blissful Cm9",
+      notes: buildNotes("pd1", [
+        ...chordBlock(["C3", "D#3", "G3", "A#3", "D4"], 0, 32),
+        ...chordBlock(["G#2", "C3", "D#3", "G3", "A#3"], 32, 32),
+        ...chordBlock(["D#3", "G3", "A#3", "D4", "F4"], 64, 32),
+        ...chordBlock(["A#2", "D3", "F3", "G3", "C4"], 96, 32),
+      ]),
+    },
+    {
+      name: "Dreamy Am9",
+      notes: buildNotes("pd2", [
+        ...chordBlock(["A2", "C3", "E3", "G3", "B3"], 0, 32),
+        ...chordBlock(["F2", "A2", "C3", "E3", "G3"], 32, 32),
+        ...chordBlock(["C3", "E3", "G3", "B3", "D4"], 64, 32),
+        ...chordBlock(["G2", "B2", "D3", "E3", "A3"], 96, 32),
+      ]),
+    },
+    {
+      name: "Velvet R&B",
+      notes: buildNotes("pd3", [
+        ...chordBlock(["D3", "F3", "A3", "C4", "E4"], 0, 32),
+        ...chordBlock(["A#2", "D3", "F3", "A3", "D4"], 32, 32),
+        ...chordBlock(["G2", "A#2", "D3", "F3", "A3"], 64, 32),
+        ...chordBlock(["A2", "C#3", "G3", "C4", "E4"], 96, 32),
+      ]),
+    },
+    {
+      name: "Cinema Lush",
+      notes: buildNotes("pd4", [
+        ...chordBlock(["F2", "G#2", "C3", "D#3", "G3"], 0, 32),
+        ...chordBlock(["C#3", "F3", "G#3", "C4", "D#4"], 32, 32),
+        ...chordBlock(["G#2", "C3", "D#3", "G3", "C4"], 64, 32),
+        ...chordBlock(["D#3", "G3", "A#3", "D4", "F4"], 96, 32),
+      ]),
+    },
+  ],
+
+  // CHORDS (CH): 4 variations of 4-chord progressions
+  chords: [
+    {
+      name: "Future Chords",
+      notes: tileTo8Bars(
+        "ch1",
+        [
+          ...chordBlock(["C3", "D#3", "G3", "A#3"], 0, 6),
+          ...chordBlock(["C3", "D#3", "G3", "A#3"], 8, 6),
+          ...chordBlock(["G#2", "C3", "D#3", "G3"], 16, 6),
+          ...chordBlock(["G#2", "C3", "D#3", "G3"], 24, 6),
+          ...chordBlock(["D#3", "G3", "A#3", "D4"], 32, 6),
+          ...chordBlock(["D#3", "G3", "A#3", "D4"], 40, 6),
+          ...chordBlock(["A#2", "D3", "F3", "A#3"], 48, 6),
+          ...chordBlock(["A#2", "D3", "F3", "A#3"], 56, 6),
+        ],
+        64
+      ),
+    },
+    {
+      name: "House Stabs",
+      notes: tileTo8Bars(
+        "ch2",
+        [
+          ...chordBlock(["A2", "C3", "E3", "G3"], 0, 3),
+          ...chordBlock(["A2", "C3", "E3", "G3"], 6, 3),
+          ...chordBlock(["A2", "C3", "E3", "G3"], 12, 3),
+          ...chordBlock(["F2", "A2", "C3", "E3"], 16, 3),
+          ...chordBlock(["F2", "A2", "C3", "E3"], 22, 3),
+          ...chordBlock(["F2", "A2", "C3", "E3"], 28, 3),
+          ...chordBlock(["C3", "E3", "G3", "B3"], 32, 3),
+          ...chordBlock(["C3", "E3", "G3", "B3"], 38, 3),
+          ...chordBlock(["C3", "E3", "G3", "B3"], 44, 3),
+          ...chordBlock(["G2", "B2", "D3", "G3"], 48, 3),
+          ...chordBlock(["G2", "B2", "D3", "G3"], 54, 3),
+          ...chordBlock(["G2", "B2", "D3", "G3"], 60, 3),
+        ],
+        64
+      ),
+    },
+    {
+      name: "Soulful 7ths",
+      notes: tileTo8Bars(
+        "ch3",
+        [
+          ...chordBlock(["F2", "G#2", "C3", "D#3", "G3"], 0, 14),
+          ...chordBlock(["D#2", "G2", "A#2", "C3", "F3"], 16, 14),
+          ...chordBlock(["C#3", "F3", "G#3", "C4"], 32, 14),
+          ...chordBlock(["C3", "E3", "G3", "A#3"], 48, 14),
+        ],
+        64
+      ),
+    },
+    {
+      name: "Anthem 4-Bar",
+      notes: tileTo8Bars(
+        "ch4",
+        [
+          ...chordBlock(["C3", "G3", "C4", "D#4"], 0, 16),
+          ...chordBlock(["G#2", "D#3", "G#3", "C4"], 16, 16),
+          ...chordBlock(["D#3", "A#3", "D#4", "G4"], 32, 16),
+          ...chordBlock(["A#2", "F3", "A#3", "D4"], 48, 16),
+        ],
+        64
+      ),
+    },
+  ],
+
+  // KEYS & PLUCKS: 4 variations of chords + top-line melody
+  keys: [
+    {
+      name: "Euphoric Top",
+      notes: tileTo8Bars(
+        "ky1",
+        [
+          ...chordBlock(["C3", "D#3", "G3"], 0, 16),
+          ["G4", 0, 4], ["A#4", 4, 4], ["G4", 8, 4], ["F4", 12, 4],
+          ...chordBlock(["G#2", "C3", "D#3"], 16, 16),
+          ["D#4", 16, 6], ["F4", 22, 2], ["G4", 24, 4], ["D#4", 28, 4],
+          ...chordBlock(["D#3", "G3", "A#3"], 32, 16),
+          ["A#4", 32, 4], ["C5", 36, 4], ["A#4", 40, 4], ["G4", 44, 4],
+          ...chordBlock(["A#2", "D3", "F3"], 48, 16),
+          ["F4", 48, 6], ["G4", 54, 2], ["D4", 56, 8],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Midnight Keys",
+      notes: tileTo8Bars(
+        "ky2",
+        [
+          ...chordBlock(["A2", "C3", "E3"], 0, 16),
+          ["E4", 0, 4], ["G4", 4, 2], ["A4", 6, 4], ["G4", 10, 2], ["E4", 12, 4],
+          ...chordBlock(["F2", "A2", "C3"], 16, 16),
+          ["C4", 16, 4], ["E4", 20, 4], ["G4", 24, 4], ["A4", 28, 4],
+          ...chordBlock(["C3", "E3", "G3"], 32, 16),
+          ["B4", 32, 4], ["C5", 36, 4], ["G4", 40, 4], ["E4", 44, 4],
+          ...chordBlock(["G2", "B2", "D3"], 48, 16),
+          ["D4", 48, 6], ["E4", 54, 2], ["G4", 56, 8],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Sunset Pluck",
+      notes: tileTo8Bars(
+        "ky3",
+        [
+          ...chordBlock(["C3", "D#3", "G3"], 0, 6),
+          ...chordBlock(["C3", "D#3", "G3"], 8, 6),
+          ["C4", 0, 2], ["D#4", 2, 2], ["G4", 4, 2], ["F4", 6, 2],
+          ["D#4", 8, 2], ["G4", 10, 2], ["A#4", 12, 4],
+          ...chordBlock(["G#2", "C3", "D#3"], 16, 6),
+          ...chordBlock(["G#2", "C3", "D#3"], 24, 6),
+          ["G#4", 16, 2], ["G4", 18, 2], ["F4", 20, 2], ["D#4", 22, 2],
+          ["C4", 24, 4], ["D#4", 28, 4],
+          ...chordBlock(["D#3", "G3", "A#3"], 32, 6),
+          ...chordBlock(["D#3", "G3", "A#3"], 40, 6),
+          ["G4", 32, 2], ["A#4", 34, 2], ["C5", 36, 4], ["A#4", 40, 4], ["G4", 44, 4],
+          ...chordBlock(["A#2", "D3", "F3"], 48, 6),
+          ...chordBlock(["A#2", "D3", "F3"], 56, 6),
+          ["F4", 48, 2], ["G4", 50, 2], ["F4", 52, 4], ["D4", 56, 4], ["C4", 60, 4],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Velvet Hook",
+      notes: tileTo8Bars(
+        "ky4",
+        [
+          ...chordBlock(["D3", "F3", "A3", "C4"], 0, 14),
+          ["A4", 2, 4], ["G4", 6, 2], ["F4", 8, 4], ["E4", 12, 4],
+          ...chordBlock(["A#2", "D3", "F3", "A3"], 16, 14),
+          ["F4", 18, 4], ["G4", 22, 2], ["A4", 24, 4], ["C5", 28, 4],
+          ...chordBlock(["G2", "A#2", "D3", "F3"], 32, 14),
+          ["A#4", 34, 4], ["A4", 38, 2], ["G4", 40, 4], ["F4", 44, 4],
+          ...chordBlock(["A2", "C#3", "E3", "G3"], 48, 14),
+          ["E4", 50, 4], ["F4", 54, 2], ["G4", 56, 4], ["E4", 60, 4],
+        ],
+        64
+      ),
+    },
+  ],
+
+  // LEAD: 4 monophonic top-line melodies (no chords)
+  lead: [
+    {
+      name: "Festival Anthem",
+      notes: tileTo8Bars(
+        "ld1",
+        [
+          ["C4", 0, 3], ["D#4", 3, 3], ["G4", 6, 4], ["F4", 10, 2], ["D#4", 12, 4],
+          ["D4", 16, 3], ["D#4", 19, 3], ["F4", 22, 4], ["D#4", 26, 2], ["C4", 28, 4],
+          ["G4", 32, 3], ["A#4", 35, 3], ["C5", 38, 4], ["A#4", 42, 2], ["G4", 44, 4],
+          ["F4", 48, 4], ["G4", 52, 4], ["D#4", 56, 4], ["D4", 60, 4],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Hyper Hook",
+      notes: tileTo8Bars(
+        "ld2",
+        [
+          ["G4", 0, 2], ["A#4", 2, 2], ["C5", 4, 3], ["A#4", 8, 2], ["G4", 10, 2], ["F4", 12, 4],
+          ["D#4", 16, 2], ["F4", 18, 2], ["G4", 20, 3], ["F4", 24, 2], ["D#4", 26, 2], ["C4", 28, 4],
+          ["C5", 32, 2], ["A#4", 34, 2], ["G4", 36, 3], ["F4", 40, 2], ["G4", 42, 2], ["A#4", 44, 4],
+          ["G4", 48, 3], ["F4", 51, 3], ["D#4", 54, 4], ["D4", 58, 6],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Melodic Drift",
+      notes: tileTo8Bars(
+        "ld3",
+        [
+          ["D#4", 0, 6], ["F4", 6, 2], ["G4", 8, 8],
+          ["A#4", 16, 6], ["G4", 22, 2], ["F4", 24, 8],
+          ["C5", 32, 6], ["A#4", 38, 2], ["G4", 40, 6], ["F4", 46, 2],
+          ["D#4", 48, 6], ["D4", 54, 2], ["C4", 56, 8],
+        ],
+        64
+      ),
+    },
+    {
+      name: "Neon Riff",
+      notes: tileTo8Bars(
+        "ld4",
+        [
+          ["C4", 0, 2], ["G4", 2, 2], ["F4", 4, 2], ["D#4", 6, 2],
+          ["D4", 8, 2], ["D#4", 10, 2], ["G4", 12, 4],
+          ["G#4", 16, 2], ["G4", 18, 2], ["F4", 20, 2], ["D#4", 22, 2],
+          ["C4", 24, 4], ["A#3", 28, 4],
+        ],
+        32
+      ),
+    },
+  ],
+};
+
+const MIDI_CATEGORY_LABELS: Record<PresetMidiCategory, string> = {
+  arp: "ARP / SEQ",
+  bass: "BASS",
+  keys: "KEYS / PLUCK",
+  pad: "PAD",
+  lead: "LEAD",
+  chords: "CHORDS",
+};
+
+function detectPresetMidiCategory(asset: AudioAsset): PresetMidiCategory {
+  const name = asset.filename.toUpperCase();
+  const cat = (asset.category || "").toLowerCase();
+  const tags = (asset.tags || []).map((t) => t.toLowerCase());
+  const combined = `${cat} ${tags.join(" ")} ${name.toLowerCase()}`;
+
+  // Prefix checks first (e.g. "LD - ...", "BA - ...", "CH - ...", "ARP - ...")
+  if (/^(ARP|SEQ)[\s_-]/i.test(name) || cat.includes("arp") || cat.includes("seq") || tags.includes("arp") || tags.includes("sequencer")) {
+    return "arp";
+  }
+  if (/^(CH|CHD)[\s_-]/i.test(name) || cat === "chord" || cat === "chords") {
+    return "chords";
+  }
+  if (/^(BA|BS|SUB|808)[\s_-]/i.test(name) || cat.includes("bass") || tags.includes("bass") || tags.includes("sub") || tags.includes("808")) {
+    return "bass";
+  }
+  if (/^(PD|PAD|AT|ATM)[\s_-]/i.test(name) || cat.includes("pad") || cat.includes("atmos") || tags.includes("pad") || tags.includes("ambient") || tags.includes("atmosphere")) {
+    return "pad";
+  }
+  if (/^(LD|LEAD)[\s_-]/i.test(name) || cat.includes("lead") || tags.includes("lead")) {
+    return "lead";
+  }
+  if (/^(KY|KEY|PL|PLK|PLUCK|PIANO|SYN)[\s_-]/i.test(name) || cat.includes("key") || cat.includes("pluck") || tags.includes("keys") || tags.includes("pluck")) {
+    return "keys";
+  }
+  if (combined.includes("chord")) {
+    return "chords";
+  }
+  return "keys";
+}
+
+function getDefaultVariationIndex(assetId: string, category: PresetMidiCategory): number {
+  // Always default Arp/Seq to variation 0 (single held C3 note)
+  if (category === "arp") return 0;
+  let hash = 0;
+  for (let i = 0; i < assetId.length; i++) {
+    hash = (hash * 31 + assetId.charCodeAt(i)) >>> 0;
+  }
+  return hash % MIDI_BANKS[category].length;
 }
 
 function parseMidiFile(buffer: ArrayBuffer): {
@@ -291,7 +709,7 @@ const FALLBACK_ASSETS: AudioAsset[] = [
     coverGradient: "from-sky-500 via-blue-700 to-slate-900",
     engine: "Vital",
     extension: ".vital",
-    category: "Pluck",
+    category: "Arp",
     tags: ["pluck", "arp", "melody", "electronic", "bright"],
     duration: "0:08",
     musicalKey: "A min",
@@ -388,37 +806,6 @@ const PIANO_NOTES = [
   { note: "E4", keyBind: ";", freq: 329.63, isBlack: false, midiNum: 64 },
 ];
 
-const STARTER_PATTERNS: Record<string, MidiRollNote[]> = {
-  "EDM Chords": [
-    { id: "c1", note: "C3", step: 0, durationSteps: 4 },
-    { id: "c2", note: "G3", step: 0, durationSteps: 4 },
-    { id: "c3", note: "D#4", step: 0, durationSteps: 4 },
-    { id: "c4", note: "G#3", step: 6, durationSteps: 4 },
-    { id: "c5", note: "C4", step: 6, durationSteps: 4 },
-    { id: "c6", note: "D#4", step: 6, durationSteps: 4 },
-    { id: "c7", note: "A#3", step: 12, durationSteps: 4 },
-    { id: "c8", note: "D4", step: 12, durationSteps: 4 },
-  ],
-  "Blissful Arp": [
-    { id: "a1", note: "C3", step: 0, durationSteps: 2 },
-    { id: "a2", note: "G3", step: 2, durationSteps: 2 },
-    { id: "a3", note: "D#4", step: 4, durationSteps: 2 },
-    { id: "a4", note: "D4", step: 6, durationSteps: 2 },
-    { id: "a5", note: "C4", step: 8, durationSteps: 2 },
-    { id: "a6", note: "G3", step: 10, durationSteps: 2 },
-    { id: "a7", note: "A#3", step: 12, durationSteps: 2 },
-    { id: "a8", note: "D4", step: 14, durationSteps: 2 },
-  ],
-  "Sub Groove": [
-    { id: "b1", note: "C3", step: 0, durationSteps: 3 },
-    { id: "b2", note: "C3", step: 4, durationSteps: 2 },
-    { id: "b3", note: "D#3", step: 6, durationSteps: 2 },
-    { id: "b4", note: "G3", step: 8, durationSteps: 3 },
-    { id: "b5", note: "F3", step: 12, durationSteps: 2 },
-    { id: "b6", note: "D#3", step: 14, durationSteps: 2 },
-  ],
-};
-
 function LogicPianoRoll({
   darkMode,
   rollNotes,
@@ -434,8 +821,12 @@ function LogicPianoRoll({
   importedMidiName,
   onImportMidiBuffer,
   onClickImportButton,
-  starterPatterns,
-  onSelectStarterPattern,
+  activeMidiCategory,
+  activeVariationIdx,
+  isCustomUserMidi,
+  onSelectVariation,
+  onResetToPresetMidi,
+  onUserEditedNotes,
   onClearNotes,
   onClose,
 }: {
@@ -453,8 +844,12 @@ function LogicPianoRoll({
   importedMidiName: string | null;
   onImportMidiBuffer: (buffer: ArrayBuffer, filename: string) => void;
   onClickImportButton: () => void;
-  starterPatterns: Record<string, MidiRollNote[]>;
-  onSelectStarterPattern: (name: string) => void;
+  activeMidiCategory: PresetMidiCategory;
+  activeVariationIdx: number;
+  isCustomUserMidi: boolean;
+  onSelectVariation: (idx: number) => void;
+  onResetToPresetMidi: () => void;
+  onUserEditedNotes: () => void;
   onClearNotes: () => void;
   onClose: () => void;
 }) {
@@ -487,11 +882,12 @@ function LogicPianoRoll({
         e.preventDefault();
         setRollNotes((prev) => prev.filter((n) => n.id !== selectedNoteId));
         setSelectedNoteId(null);
+        onUserEditedNotes();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNoteId, setRollNotes]);
+  }, [selectedNoteId, setRollNotes, onUserEditedNotes]);
 
   const commitBpm = () => {
     const parsed = parseInt(bpmInput, 10);
@@ -537,12 +933,14 @@ function LogicPianoRoll({
     const origDuration = note.durationSteps;
     const origRowIdx = ROLL_ROWS.findIndex((r) => r.note === note.note);
     let lastAuditionedRow = origRowIdx;
+    let didModify = false;
 
     const onMove = (moveEv: MouseEvent) => {
       const deltaSteps = Math.round((moveEv.clientX - startX) / stepWidth);
 
       if (mode === "resize") {
         const nextDur = Math.max(1, Math.min(TOTAL_STEPS - origStep, origDuration + deltaSteps));
+        if (nextDur !== origDuration) didModify = true;
         setRollNotes((prev) =>
           prev.map((n) => (n.id === note.id ? { ...n, durationSteps: nextDur } : n))
         );
@@ -551,6 +949,8 @@ function LogicPianoRoll({
         const nextRowIdx = Math.min(ROLL_ROWS.length - 1, Math.max(0, origRowIdx + deltaRows));
         const nextStep = Math.min(TOTAL_STEPS - origDuration, Math.max(0, origStep + deltaSteps));
         const nextNoteName = ROLL_ROWS[nextRowIdx].note;
+
+        if (nextRowIdx !== origRowIdx || nextStep !== origStep) didModify = true;
 
         if (nextRowIdx !== lastAuditionedRow) {
           lastAuditionedRow = nextRowIdx;
@@ -566,6 +966,7 @@ function LogicPianoRoll({
     };
 
     const onUp = () => {
+      if (didModify) onUserEditedNotes();
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
@@ -595,6 +996,7 @@ function LogicPianoRoll({
 
     setRollNotes((prev) => [...prev, newNote]);
     setSelectedNoteId(newNote.id);
+    onUserEditedNotes();
     onTriggerNote(row.note, 0.35);
   };
 
@@ -619,6 +1021,7 @@ function LogicPianoRoll({
 
   const gridWidth = TOTAL_STEPS * stepWidth;
   const gridHeight = ROLL_ROWS.length * rowHeight;
+  const currentBank = MIDI_BANKS[activeMidiCategory];
 
   return (
     <div
@@ -719,21 +1122,39 @@ function LogicPianoRoll({
               ))}
             </div>
 
-            {/* STARTER PATTERNS */}
-            <div className="hidden lg:flex items-center gap-1 pl-1">
-              {Object.keys(starterPatterns).map((name) => (
+            {/* 4 PRESET-MATCHED MIDI VARIATIONS */}
+            <div className="flex items-center gap-1 pl-1 flex-wrap">
+              <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 font-bold">
+                {MIDI_CATEGORY_LABELS[activeMidiCategory]}
+              </span>
+              {currentBank.map((variation, idx) => {
+                const isActive = !isCustomUserMidi && activeVariationIdx === idx;
+                return (
+                  <button
+                    key={variation.name}
+                    onClick={() => onSelectVariation(idx)}
+                    className={`px-2 py-1 rounded-md text-[11px] font-medium border transition-colors ${
+                      isActive
+                        ? "bg-blue-600/25 border-blue-500 text-blue-300 font-semibold"
+                        : darkMode
+                        ? "bg-white/[0.03] border-white/[0.08] text-zinc-400 hover:text-white hover:border-blue-500/60"
+                        : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
+                    }`}
+                  >
+                    {idx + 1}. {variation.name}
+                  </button>
+                );
+              })}
+
+              {isCustomUserMidi && (
                 <button
-                  key={name}
-                  onClick={() => onSelectStarterPattern(name)}
-                  className={`px-2 py-1 rounded-md text-[11px] font-medium border ${
-                    darkMode
-                      ? "bg-white/[0.03] border-white/[0.08] text-zinc-300 hover:border-blue-500"
-                      : "bg-white border-slate-200 text-slate-700 hover:border-blue-500"
-                  }`}
+                  onClick={onResetToPresetMidi}
+                  title="Switch back to automatic preset-matched MIDI"
+                  className="px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25 transition-colors"
                 >
-                  {name}
+                  ↺ Auto MIDI
                 </button>
-              ))}
+              )}
             </div>
           </div>
 
@@ -978,12 +1399,14 @@ function LogicPianoRoll({
                         e.stopPropagation();
                         setRollNotes((prev) => prev.filter((item) => item.id !== n.id));
                         if (selectedNoteId === n.id) setSelectedNoteId(null);
+                        onUserEditedNotes();
                       }}
                       onContextMenu={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         setRollNotes((prev) => prev.filter((item) => item.id !== n.id));
                         if (selectedNoteId === n.id) setSelectedNoteId(null);
+                        onUserEditedNotes();
                       }}
                       style={{
                         left: `${n.step * stepWidth + 1}px`,
@@ -1167,7 +1590,10 @@ export default function ProdPresetsMarketplace() {
 
   // Interactive 8-Bar MIDI Piano Roll Sequencer State
   const [pianoRollOpen, setPianoRollOpen] = useState(false);
-  const [rollNotes, setRollNotes] = useState<MidiRollNote[]>(STARTER_PATTERNS["EDM Chords"]);
+  const [activeMidiCategory, setActiveMidiCategory] = useState<PresetMidiCategory>("bass");
+  const [activeVariationIdx, setActiveVariationIdx] = useState<number>(0);
+  const [isCustomUserMidi, setIsCustomUserMidi] = useState<boolean>(false);
+  const [rollNotes, setRollNotes] = useState<MidiRollNote[]>(MIDI_BANKS.bass[0].notes);
   const [rollBpm, setRollBpm] = useState<number>(128);
   const [isRollPlaying, setIsRollPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState<number | null>(null);
@@ -1233,7 +1659,6 @@ export default function ProdPresetsMarketplace() {
     activeFallbackOscsRef.current.clear();
   }, []);
 
-  // Instantly cuts individual preset preview audio (~15ms)
   const stopPreviewAudio = useCallback(() => {
     autoPlayAfterLoadRef.current = false;
 
@@ -1256,7 +1681,6 @@ export default function ProdPresetsMarketplace() {
     setIsPlayingPreview(false);
   }, [killFallbackOscs, rampGain]);
 
-  // Instantly cuts Piano Roll & keyboard sampler audio (~15ms)
   const stopSamplerAudio = useCallback(() => {
     killFallbackOscs();
     rampGain(samplerGainRef.current, 0, FAST_CUT_SEC);
@@ -1268,13 +1692,25 @@ export default function ProdPresetsMarketplace() {
     setActiveNotes([]);
   }, [killFallbackOscs, rampGain]);
 
-  // Instantly silences everything (Piano Roll + Preview + Keyboard)
   const stopAllAudio = useCallback(() => {
     stopPreviewAudio();
     stopSamplerAudio();
     setIsRollPlaying(false);
     setCurrentStep(null);
   }, [stopPreviewAudio, stopSamplerAudio]);
+
+  // Apply category-matched default MIDI whenever activeAsset changes (unless user loaded/edited custom MIDI)
+  useEffect(() => {
+    const detectedCat = detectPresetMidiCategory(activeAsset);
+    setActiveMidiCategory(detectedCat);
+
+    if (!isCustomUserMidi) {
+      const varIdx = getDefaultVariationIndex(activeAsset.id, detectedCat);
+      setActiveVariationIdx(varIdx);
+      setRollNotes(MIDI_BANKS[detectedCat][varIdx].notes);
+      playheadStepRef.current = 0;
+    }
+  }, [activeAsset, isCustomUserMidi]);
 
   const getPreviewUrl = useCallback((previewPath?: string | null) => {
     if (!previewPath) return null;
@@ -1345,10 +1781,10 @@ export default function ProdPresetsMarketplace() {
   }, [supabase]);
 
   useEffect(() => {
-    if (activeAsset.bpm && activeAsset.bpm >= 40 && activeAsset.bpm <= 240) {
+    if (activeAsset.bpm && activeAsset.bpm >= 40 && activeAsset.bpm <= 240 && !importedMidiName) {
       setRollBpm(activeAsset.bpm);
     }
-  }, [activeAsset.id, activeAsset.bpm]);
+  }, [activeAsset.id, activeAsset.bpm, importedMidiName]);
 
   // Load single shared audio buffer into both Preview Player and Sampler
   useEffect(() => {
@@ -1685,7 +2121,6 @@ export default function ProdPresetsMarketplace() {
       return;
     }
 
-    // Ensure sampler gain is active and preview is silenced
     rampGain(samplerGainRef.current, 1, 0.005);
     const stepMs = (60 / rollBpm / 4) * 1000;
 
@@ -1724,6 +2159,7 @@ export default function ProdPresetsMarketplace() {
     }
     stopPreviewAudio();
     setRollNotes(notes);
+    setIsCustomUserMidi(true);
     if (detectedBpm) {
       setRollBpm(detectedBpm);
     }
@@ -2840,15 +3276,31 @@ export default function ProdPresetsMarketplace() {
               importedMidiName={importedMidiName}
               onImportMidiBuffer={handleImportMidiBuffer}
               onClickImportButton={() => midiFileInputRef.current?.click()}
-              starterPatterns={STARTER_PATTERNS}
-              onSelectStarterPattern={(name) => {
-                setRollNotes(STARTER_PATTERNS[name]);
+              activeMidiCategory={activeMidiCategory}
+              activeVariationIdx={activeVariationIdx}
+              isCustomUserMidi={isCustomUserMidi}
+              onSelectVariation={(idx) => {
+                setIsCustomUserMidi(false);
                 setImportedMidiName(null);
+                setActiveVariationIdx(idx);
+                setRollNotes(MIDI_BANKS[activeMidiCategory][idx].notes);
                 playheadStepRef.current = 0;
               }}
+              onResetToPresetMidi={() => {
+                const detectedCat = detectPresetMidiCategory(activeAsset);
+                const varIdx = getDefaultVariationIndex(activeAsset.id, detectedCat);
+                setIsCustomUserMidi(false);
+                setImportedMidiName(null);
+                setActiveMidiCategory(detectedCat);
+                setActiveVariationIdx(varIdx);
+                setRollNotes(MIDI_BANKS[detectedCat][varIdx].notes);
+                playheadStepRef.current = 0;
+              }}
+              onUserEditedNotes={() => setIsCustomUserMidi(true)}
               onClearNotes={() => {
                 setRollNotes([]);
                 setImportedMidiName(null);
+                setIsCustomUserMidi(true);
               }}
               onClose={() => {
                 stopAllAudio();
