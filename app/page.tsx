@@ -56,6 +56,7 @@ const TOTAL_BARS = 8;
 const STEPS_PER_BAR = 16;
 const TOTAL_STEPS = TOTAL_BARS * STEPS_PER_BAR; // 128 steps
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const FAST_CUT_SEC = 0.015; // 15ms perceptually instant fade (prevents audio clicks)
 
 // 3 Full Octaves: C2 (MIDI 36) through C5 (MIDI 72)
 const ROLL_KEYS_ASC: RollKeyInfo[] = Array.from({ length: 37 }, (_, i) => {
@@ -152,7 +153,6 @@ function parseMidiFile(buffer: ArrayBuffer): {
             metaLen = (metaLen << 7) | (b & 0x7f);
             if ((b & 0x80) === 0) break;
           }
-          // Meta Event 0x51 = Set Tempo (3 bytes, microseconds per quarter note)
           if (metaType === 0x51 && metaLen === 3 && pos + 3 <= trackEnd && detectedBpm === null) {
             const usPerQuarter =
               (bytes[pos] << 16) | (bytes[pos + 1] << 8) | bytes[pos + 2];
@@ -1181,7 +1181,11 @@ export default function ProdPresetsMarketplace() {
   const [spaceMix, setSpaceMix] = useState(15);
   const [macro1, setMacro1] = useState(50);
 
+  // Dual-bus audio graph: separate Preview Player & Sampler gains for instant 15ms cuts and zero overlap
   const samplerRef = useRef<Tone.Sampler | null>(null);
+  const previewPlayerRef = useRef<Tone.Player | null>(null);
+  const samplerGainRef = useRef<Tone.Gain | null>(null);
+  const previewGainRef = useRef<Tone.Gain | null>(null);
   const filterRef = useRef<Tone.Filter | null>(null);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallbackTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -1191,14 +1195,31 @@ export default function ProdPresetsMarketplace() {
 
   const showSynthDeck = activeTab !== "Home" || homeDeckVisible || pianoRollOpen;
 
-  const stopPreviewAudio = useCallback(() => {
-    autoPlayAfterLoadRef.current = false;
-
-    if (previewTimeoutRef.current) {
-      clearTimeout(previewTimeoutRef.current);
-      previewTimeoutRef.current = null;
+  const ensureAudioBuses = useCallback(() => {
+    if (!filterRef.current) {
+      filterRef.current = new Tone.Filter({
+        type: "lowpass",
+        frequency: 18000,
+        Q: 1,
+      }).toDestination();
     }
+    if (!samplerGainRef.current) {
+      samplerGainRef.current = new Tone.Gain(1).connect(filterRef.current);
+    }
+    if (!previewGainRef.current) {
+      previewGainRef.current = new Tone.Gain(1).connect(filterRef.current);
+    }
+  }, []);
 
+  const rampGain = useCallback((gainNode: Tone.Gain | null, target: number, rampSec: number) => {
+    if (!gainNode) return;
+    const now = Tone.now();
+    gainNode.gain.cancelScheduledValues(now);
+    gainNode.gain.setValueAtTime(gainNode.gain.value, now);
+    gainNode.gain.linearRampToValueAtTime(target, now + rampSec);
+  }, []);
+
+  const killFallbackOscs = useCallback(() => {
     fallbackTimeoutsRef.current.forEach((t) => clearTimeout(t));
     fallbackTimeoutsRef.current = [];
 
@@ -1210,17 +1231,50 @@ export default function ProdPresetsMarketplace() {
       }
     });
     activeFallbackOscsRef.current.clear();
-
-    samplerRef.current?.releaseAll();
-    setIsPlayingPreview(false);
   }, []);
 
+  // Instantly cuts individual preset preview audio (~15ms)
+  const stopPreviewAudio = useCallback(() => {
+    autoPlayAfterLoadRef.current = false;
+
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current);
+      previewTimeoutRef.current = null;
+    }
+
+    killFallbackOscs();
+    rampGain(previewGainRef.current, 0, FAST_CUT_SEC);
+
+    if (previewPlayerRef.current && previewPlayerRef.current.state === "started") {
+      try {
+        previewPlayerRef.current.stop(Tone.now() + FAST_CUT_SEC);
+      } catch {
+        // Ignore if already stopped
+      }
+    }
+
+    setIsPlayingPreview(false);
+  }, [killFallbackOscs, rampGain]);
+
+  // Instantly cuts Piano Roll & keyboard sampler audio (~15ms)
+  const stopSamplerAudio = useCallback(() => {
+    killFallbackOscs();
+    rampGain(samplerGainRef.current, 0, FAST_CUT_SEC);
+    try {
+      samplerRef.current?.releaseAll(Tone.now());
+    } catch {
+      // Ignore if disposed
+    }
+    setActiveNotes([]);
+  }, [killFallbackOscs, rampGain]);
+
+  // Instantly silences everything (Piano Roll + Preview + Keyboard)
   const stopAllAudio = useCallback(() => {
     stopPreviewAudio();
+    stopSamplerAudio();
     setIsRollPlaying(false);
-    setActiveNotes([]);
     setCurrentStep(null);
-  }, [stopPreviewAudio]);
+  }, [stopPreviewAudio, stopSamplerAudio]);
 
   const getPreviewUrl = useCallback((previewPath?: string | null) => {
     if (!previewPath) return null;
@@ -1296,54 +1350,97 @@ export default function ProdPresetsMarketplace() {
     }
   }, [activeAsset.id, activeAsset.bpm]);
 
+  // Load single shared audio buffer into both Preview Player and Sampler
   useEffect(() => {
+    let cancelled = false;
     setIsSampleReady(false);
     setSampleError(null);
 
-    samplerRef.current?.releaseAll();
-    samplerRef.current?.dispose();
-    samplerRef.current = null;
+    if (previewPlayerRef.current) {
+      try {
+        previewPlayerRef.current.stop();
+        previewPlayerRef.current.dispose();
+      } catch {
+        // Already disposed
+      }
+      previewPlayerRef.current = null;
+    }
+
+    if (samplerRef.current) {
+      try {
+        samplerRef.current.releaseAll();
+        samplerRef.current.dispose();
+      } catch {
+        // Already disposed
+      }
+      samplerRef.current = null;
+    }
 
     const previewUrl = getPreviewUrl(activeAsset.previewPath);
     if (!previewUrl) return;
 
-    if (!filterRef.current) {
-      filterRef.current = new Tone.Filter({
-        type: "lowpass",
-        frequency: 18000,
-        Q: 1,
-      }).toDestination();
-    }
+    ensureAudioBuses();
 
-    const sampler = new Tone.Sampler({
-      urls: {
-        C3: previewUrl,
-      },
-      release: 0.35 + (envelope / 100) * 1.2,
-      onload: () => {
+    const buffer = new Tone.ToneAudioBuffer(
+      previewUrl,
+      () => {
+        if (cancelled) {
+          buffer.dispose();
+          return;
+        }
+
+        const player = new Tone.Player({
+          url: buffer,
+          fadeOut: FAST_CUT_SEC,
+        }).connect(previewGainRef.current!);
+
+        const sampler = new Tone.Sampler({
+          urls: { C3: buffer },
+          release: 0.12 + (envelope / 100) * 0.65,
+        }).connect(samplerGainRef.current!);
+
+        previewPlayerRef.current = player;
+        samplerRef.current = sampler;
         setIsSampleReady(true);
+
         if (autoPlayAfterLoadRef.current) {
           autoPlayAfterLoadRef.current = false;
-          sampler.triggerAttackRelease("C3", 3.5);
+          rampGain(samplerGainRef.current, 0, FAST_CUT_SEC);
+          rampGain(previewGainRef.current, 1, 0.005);
+          const playDur = Math.min(buffer.duration || 3.5, 3.5);
+          player.start(Tone.now(), 0, playDur);
           setIsPlayingPreview(true);
           if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
-          previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), 3500);
+          previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), playDur * 1000);
         }
       },
-      onerror: (err) => {
+      (err) => {
+        if (cancelled) return;
         console.error("Failed to load preview:", previewUrl, err);
         setSampleError("File not found in Storage");
-      },
-    }).connect(filterRef.current);
-
-    samplerRef.current = sampler;
+      }
+    );
 
     return () => {
-      sampler.releaseAll();
-      sampler.dispose();
+      cancelled = true;
+      try {
+        previewPlayerRef.current?.stop();
+        previewPlayerRef.current?.dispose();
+      } catch {
+        // Ignore
+      }
+      previewPlayerRef.current = null;
+      try {
+        samplerRef.current?.releaseAll();
+        samplerRef.current?.dispose();
+      } catch {
+        // Ignore
+      }
+      samplerRef.current = null;
+      buffer.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAsset.id, activeAsset.previewPath, getPreviewUrl]);
+  }, [activeAsset.id, activeAsset.previewPath, getPreviewUrl, ensureAudioBuses, rampGain]);
 
   useEffect(() => {
     if (filterRef.current) {
@@ -1354,7 +1451,7 @@ export default function ProdPresetsMarketplace() {
       filterRef.current.Q.rampTo(0.7 + (resonance / 100) * 10, 0.05);
     }
     if (samplerRef.current) {
-      samplerRef.current.release = 0.2 + (envelope / 100) * 1.6;
+      samplerRef.current.release = 0.12 + (envelope / 100) * 0.65;
     }
   }, [cutoff, resonance, envelope]);
 
@@ -1572,13 +1669,14 @@ export default function ProdPresetsMarketplace() {
       if (activeAsset.previewPath) {
         await Tone.start();
         if (samplerRef.current && isSampleReady) {
+          rampGain(samplerGainRef.current, 1, 0.005);
           samplerRef.current.triggerAttackRelease(noteName, durationSec);
         }
       } else {
         triggerFallbackOsc(getMidiNoteFreq(noteName), durationSec);
       }
     },
-    [activeAsset.previewPath, isSampleReady, triggerFallbackOsc]
+    [activeAsset.previewPath, isSampleReady, rampGain, triggerFallbackOsc]
   );
 
   useEffect(() => {
@@ -1587,6 +1685,8 @@ export default function ProdPresetsMarketplace() {
       return;
     }
 
+    // Ensure sampler gain is active and preview is silenced
+    rampGain(samplerGainRef.current, 1, 0.005);
     const stepMs = (60 / rollBpm / 4) * 1000;
 
     const tick = () => {
@@ -1611,19 +1711,10 @@ export default function ProdPresetsMarketplace() {
 
     return () => {
       clearInterval(interval);
-      setActiveNotes([]);
+      stopSamplerAudio();
       setCurrentStep(null);
-      samplerRef.current?.releaseAll();
-      activeFallbackOscsRef.current.forEach((osc) => {
-        try {
-          osc.stop();
-        } catch {
-          // Already stopped
-        }
-      });
-      activeFallbackOscsRef.current.clear();
     };
-  }, [isRollPlaying, rollBpm, rollNotes, triggerTimedNote]);
+  }, [isRollPlaying, rollBpm, rollNotes, triggerTimedNote, rampGain, stopSamplerAudio]);
 
   const handleImportMidiBuffer = async (buffer: ArrayBuffer, filename: string) => {
     const { notes, detectedBpm } = parseMidiFile(buffer);
@@ -1640,6 +1731,7 @@ export default function ProdPresetsMarketplace() {
     setPianoRollOpen(true);
     playheadStepRef.current = 0;
     await Tone.start();
+    rampGain(samplerGainRef.current, 1, 0.005);
     setIsRollPlaying(true);
   };
 
@@ -1658,18 +1750,20 @@ export default function ProdPresetsMarketplace() {
 
   const handlePressNote = useCallback(
     async (noteName: string, freq: number) => {
+      stopPreviewAudio();
       setActiveNotes((prev) => (prev.includes(noteName) ? prev : [...prev, noteName]));
 
       if (activeAsset.previewPath) {
         await Tone.start();
         if (samplerRef.current && isSampleReady) {
+          rampGain(samplerGainRef.current, 1, 0.005);
           samplerRef.current.triggerAttack(noteName);
         }
       } else {
         triggerFallbackOsc(freq, 0.65);
       }
     },
-    [activeAsset.previewPath, isSampleReady, triggerFallbackOsc]
+    [activeAsset.previewPath, isSampleReady, rampGain, stopPreviewAudio, triggerFallbackOsc]
   );
 
   const handleReleaseNote = useCallback((noteName: string) => {
@@ -1715,7 +1809,7 @@ export default function ProdPresetsMarketplace() {
   const handleTogglePlay = async (asset: AudioAsset) => {
     const wasPlayingSameAsset = activeAsset.id === asset.id && isPlayingPreview;
 
-    // Always stop both the piano roll and any currently playing preview to prevent overlap
+    // Hard-cut both Piano Roll and any active preview (~15ms) so audio never overlaps
     stopAllAudio();
     setHomeDeckVisible(true);
 
@@ -1725,11 +1819,17 @@ export default function ProdPresetsMarketplace() {
 
     if (asset.previewPath) {
       await Tone.start();
-      if (activeAsset.id === asset.id && samplerRef.current && isSampleReady) {
-        samplerRef.current.releaseAll();
-        samplerRef.current.triggerAttackRelease("C3", 3.5);
+      if (activeAsset.id === asset.id && previewPlayerRef.current && isSampleReady) {
+        try {
+          previewPlayerRef.current.stop();
+        } catch {
+          // Ignore
+        }
+        rampGain(previewGainRef.current, 1, 0.005);
+        const playDur = Math.min(previewPlayerRef.current.buffer?.duration || 3.5, 3.5);
+        previewPlayerRef.current.start(Tone.now(), 0, playDur);
         setIsPlayingPreview(true);
-        previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), 3500);
+        previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), playDur * 1000);
       } else {
         autoPlayAfterLoadRef.current = true;
         setActiveAsset(asset);
@@ -1874,7 +1974,10 @@ export default function ProdPresetsMarketplace() {
       <div
         key={item.id}
         onClick={() => {
-          setActiveAsset(item);
+          if (activeAsset.id !== item.id) {
+            stopPreviewAudio();
+            setActiveAsset(item);
+          }
           if (activeTab === "Home") setHomeDeckVisible(true);
         }}
         className={`group flex items-center justify-between gap-3 sm:gap-4 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
@@ -2719,6 +2822,7 @@ export default function ProdPresetsMarketplace() {
                   stopAllAudio();
                 } else {
                   stopPreviewAudio();
+                  rampGain(samplerGainRef.current, 1, 0.005);
                   playheadStepRef.current = currentStep ?? 0;
                   setIsRollPlaying(true);
                 }
@@ -2729,7 +2833,10 @@ export default function ProdPresetsMarketplace() {
                 setCurrentStep(step);
               }}
               activeNotes={activeNotes}
-              onTriggerNote={triggerTimedNote}
+              onTriggerNote={(noteName, dur) => {
+                stopPreviewAudio();
+                triggerTimedNote(noteName, dur);
+              }}
               importedMidiName={importedMidiName}
               onImportMidiBuffer={handleImportMidiBuffer}
               onClickImportButton={() => midiFileInputRef.current?.click()}
