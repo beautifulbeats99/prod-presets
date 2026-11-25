@@ -806,7 +806,7 @@ function LogicPianoRoll({
             <button
               onClick={onClose}
               className="px-2 py-1 rounded-lg text-xs opacity-60 hover:opacity-100"
-              title="Close Piano Roll"
+              title="Close Piano Roll & Stop Audio"
             >
               ✕
             </button>
@@ -1184,10 +1184,43 @@ export default function ProdPresetsMarketplace() {
   const samplerRef = useRef<Tone.Sampler | null>(null);
   const filterRef = useRef<Tone.Filter | null>(null);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallbackTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const activeFallbackOscsRef = useRef<Set<OscillatorNode>>(new Set());
   const autoPlayAfterLoadRef = useRef<boolean>(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const showSynthDeck = activeTab !== "Home" || homeDeckVisible || pianoRollOpen;
+
+  const stopPreviewAudio = useCallback(() => {
+    autoPlayAfterLoadRef.current = false;
+
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current);
+      previewTimeoutRef.current = null;
+    }
+
+    fallbackTimeoutsRef.current.forEach((t) => clearTimeout(t));
+    fallbackTimeoutsRef.current = [];
+
+    activeFallbackOscsRef.current.forEach((osc) => {
+      try {
+        osc.stop();
+      } catch {
+        // Already stopped
+      }
+    });
+    activeFallbackOscsRef.current.clear();
+
+    samplerRef.current?.releaseAll();
+    setIsPlayingPreview(false);
+  }, []);
+
+  const stopAllAudio = useCallback(() => {
+    stopPreviewAudio();
+    setIsRollPlaying(false);
+    setActiveNotes([]);
+    setCurrentStep(null);
+  }, [stopPreviewAudio]);
 
   const getPreviewUrl = useCallback((previewPath?: string | null) => {
     if (!previewPath) return null;
@@ -1518,6 +1551,11 @@ export default function ProdPresetsMarketplace() {
         filter.connect(gain);
         gain.connect(ctx.destination);
 
+        activeFallbackOscsRef.current.add(osc1);
+        activeFallbackOscsRef.current.add(osc2);
+        osc1.onended = () => activeFallbackOscsRef.current.delete(osc1);
+        osc2.onended = () => activeFallbackOscsRef.current.delete(osc2);
+
         osc1.start(now);
         osc2.start(now);
         osc1.stop(now + release + 0.05);
@@ -1576,6 +1614,14 @@ export default function ProdPresetsMarketplace() {
       setActiveNotes([]);
       setCurrentStep(null);
       samplerRef.current?.releaseAll();
+      activeFallbackOscsRef.current.forEach((osc) => {
+        try {
+          osc.stop();
+        } catch {
+          // Already stopped
+        }
+      });
+      activeFallbackOscsRef.current.clear();
     };
   }, [isRollPlaying, rollBpm, rollNotes, triggerTimedNote]);
 
@@ -1585,6 +1631,7 @@ export default function ProdPresetsMarketplace() {
       alert("No playable notes found in that MIDI file.");
       return;
     }
+    stopPreviewAudio();
     setRollNotes(notes);
     if (detectedBpm) {
       setRollBpm(detectedBpm);
@@ -1666,13 +1713,13 @@ export default function ProdPresetsMarketplace() {
   }, [showSynthDeck, handlePressNote, handleReleaseNote]);
 
   const handleTogglePlay = async (asset: AudioAsset) => {
-    if (previewTimeoutRef.current) clearTimeout(previewTimeoutRef.current);
-    setIsRollPlaying(false);
+    const wasPlayingSameAsset = activeAsset.id === asset.id && isPlayingPreview;
+
+    // Always stop both the piano roll and any currently playing preview to prevent overlap
+    stopAllAudio();
     setHomeDeckVisible(true);
 
-    if (activeAsset.id === asset.id && isPlayingPreview) {
-      samplerRef.current?.releaseAll();
-      setIsPlayingPreview(false);
+    if (wasPlayingSameAsset) {
       return;
     }
 
@@ -1694,8 +1741,9 @@ export default function ProdPresetsMarketplace() {
     setActiveAsset(asset);
     setIsPlayingPreview(true);
     triggerFallbackOsc(asset.baseFreq, 0.8);
-    setTimeout(() => triggerFallbackOsc(asset.baseFreq * 1.25, 0.7), 220);
-    setTimeout(() => triggerFallbackOsc(asset.baseFreq * 1.5, 0.9), 440);
+    const t1 = setTimeout(() => triggerFallbackOsc(asset.baseFreq * 1.25, 0.7), 220);
+    const t2 = setTimeout(() => triggerFallbackOsc(asset.baseFreq * 1.5, 0.9), 440);
+    fallbackTimeoutsRef.current = [t1, t2];
     previewTimeoutRef.current = setTimeout(() => setIsPlayingPreview(false), 1400);
   };
 
@@ -2667,8 +2715,13 @@ export default function ProdPresetsMarketplace() {
               isRollPlaying={isRollPlaying}
               onTogglePlay={async () => {
                 await Tone.start();
-                if (!isRollPlaying) playheadStepRef.current = currentStep ?? 0;
-                setIsRollPlaying((p) => !p);
+                if (isRollPlaying) {
+                  stopAllAudio();
+                } else {
+                  stopPreviewAudio();
+                  playheadStepRef.current = currentStep ?? 0;
+                  setIsRollPlaying(true);
+                }
               }}
               currentStep={currentStep}
               onSeekStep={(step) => {
@@ -2690,7 +2743,10 @@ export default function ProdPresetsMarketplace() {
                 setRollNotes([]);
                 setImportedMidiName(null);
               }}
-              onClose={() => setPianoRollOpen(false)}
+              onClose={() => {
+                stopAllAudio();
+                setPianoRollOpen(false);
+              }}
             />
           )}
 
@@ -2740,7 +2796,14 @@ export default function ProdPresetsMarketplace() {
                     {isPlayingPreview ? "■ Stop" : "▶ Play"}
                   </button>
                   <button
-                    onClick={() => setPianoRollOpen((prev) => !prev)}
+                    onClick={() => {
+                      if (pianoRollOpen) {
+                        stopAllAudio();
+                        setPianoRollOpen(false);
+                      } else {
+                        setPianoRollOpen(true);
+                      }
+                    }}
                     className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors ${
                       pianoRollOpen
                         ? "bg-blue-600/20 border-blue-500 text-blue-400"
@@ -2765,7 +2828,7 @@ export default function ProdPresetsMarketplace() {
                   {activeTab === "Home" && (
                     <button
                       onClick={() => {
-                        setIsRollPlaying(false);
+                        stopAllAudio();
                         setPianoRollOpen(false);
                         setHomeDeckVisible(false);
                       }}
