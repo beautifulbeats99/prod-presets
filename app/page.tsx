@@ -460,7 +460,6 @@ function detectPresetMidiCategory(asset: AudioAsset): PresetMidiCategory {
   const tags = (asset.tags || []).map((t) => t.toLowerCase());
   const combined = `${cat} ${tags.join(" ")} ${name.toLowerCase()}`;
 
-  // Prefix checks first (e.g. "LD - ...", "BA - ...", "CH - ...", "ARP - ...")
   if (/^(ARP|SEQ)[\s_-]/i.test(name) || cat.includes("arp") || cat.includes("seq") || tags.includes("arp") || tags.includes("sequencer")) {
     return "arp";
   }
@@ -486,7 +485,6 @@ function detectPresetMidiCategory(asset: AudioAsset): PresetMidiCategory {
 }
 
 function getDefaultVariationIndex(assetId: string, category: PresetMidiCategory): number {
-  // Always default Arp/Seq to variation 0 (single held C3 note)
   if (category === "arp") return 0;
   let hash = 0;
   for (let i = 0; i < assetId.length; i++) {
@@ -859,6 +857,7 @@ function LogicPianoRoll({
   const [drawLengthSteps, setDrawLengthSteps] = useState<number>(4);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [isDragOverMidi, setIsDragOverMidi] = useState(false);
+  const [autoScroll, setAutoScroll] = useState<boolean>(true);
 
   const [bpmInput, setBpmInput] = useState<string>(String(rollBpm));
   useEffect(() => {
@@ -874,6 +873,30 @@ function LogicPianoRoll({
       scrollContainerRef.current.scrollTop = Math.max(0, 10 * rowHeight);
     }
   }, [rowHeight]);
+
+  // Catch-Playhead Horizontal Auto-Scroll during playback
+  useEffect(() => {
+    if (!isRollPlaying || !autoScroll || currentStep === null) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const keyboardColWidth = 56;
+    const visibleGridWidth = Math.max(120, container.clientWidth - keyboardColWidth);
+    const playheadX = currentStep * stepWidth;
+
+    if (currentStep === 0) {
+      container.scrollTo({ left: 0, behavior: "auto" });
+      return;
+    }
+
+    const leftBound = container.scrollLeft;
+    const rightTrigger = leftBound + visibleGridWidth * 0.85;
+
+    if (playheadX > rightTrigger || playheadX < leftBound) {
+      const targetLeft = Math.max(0, playheadX - visibleGridWidth * 0.15);
+      container.scrollTo({ left: targetLeft, behavior: "smooth" });
+    }
+  }, [currentStep, isRollPlaying, autoScroll, stepWidth]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1158,13 +1181,27 @@ function LogicPianoRoll({
             </div>
           </div>
 
-          {/* RIGHT CONTROLS: ZOOM, SIZE, MIDI IMPORT, CLEAR */}
+          {/* RIGHT CONTROLS: AUTO-SCROLL, ZOOM, SIZE, MIDI IMPORT, CLEAR */}
           <div className="flex flex-wrap items-center gap-1.5">
             {importedMidiName && (
               <span className="text-[11px] font-mono text-blue-400 max-w-[140px] truncate mr-1">
                 🎵 {importedMidiName}
               </span>
             )}
+
+            <button
+              onClick={() => setAutoScroll((prev) => !prev)}
+              title="Auto-scroll Piano Roll to follow the playhead"
+              className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition-colors ${
+                autoScroll
+                  ? "bg-blue-600/20 border-blue-500 text-blue-400"
+                  : darkMode
+                  ? "bg-white/[0.03] border-white/10 text-zinc-400 hover:text-white"
+                  : "bg-white border-slate-300 text-slate-600"
+              }`}
+            >
+              ⇢ Follow
+            </button>
 
             <div className="flex items-center rounded-lg border border-white/10 overflow-hidden text-[11px] font-mono">
               <button
