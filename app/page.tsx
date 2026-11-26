@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase";
 type TabType = "Home" | "Presets" | "Samples" | "Packs" | "My Library";
 type SynthEngine = "All" | "Analog Lab" | "Serum" | "Vital" | "Omnisphere" | "WAV";
 type PresetMidiCategory = "arp" | "bass" | "keys" | "pad" | "lead" | "chords";
+type SubscriptionPlan = "monthly" | "annual";
 
 interface AudioAsset {
   id: string;
@@ -83,7 +84,6 @@ function getMidiNoteFreq(noteName: string): number {
   return found ? found.freq : 261.63;
 }
 
-// Helper to build compact 8-bar MIDI arrays cleanly
 type RawNoteTuple = [string, number, number]; // [noteName, step, durationSteps]
 
 function buildNotes(prefix: string, tuples: RawNoteTuple[]): MidiRollNote[] {
@@ -119,7 +119,6 @@ function chordBlock(notes: string[], step: number, durationSteps: number): RawNo
 
 // 4 MIDI Variations Per Preset Type (All C2–C5, full 8 bars)
 const MIDI_BANKS: Record<PresetMidiCategory, MidiVariation[]> = {
-  // ARP / SEQUENCER: Defaults to 1 single held C3 note
   arp: [
     {
       name: "C3 Hold",
@@ -144,7 +143,6 @@ const MIDI_BANKS: Record<PresetMidiCategory, MidiVariation[]> = {
     },
   ],
 
-  // BASS: 4 distinct low-octave basslines
   bass: [
     {
       name: "EDM Drive",
@@ -202,7 +200,6 @@ const MIDI_BANKS: Record<PresetMidiCategory, MidiVariation[]> = {
     },
   ],
 
-  // PADS: 4 beautiful 4-chord progressions (2 bars per chord = 8 bars)
   pad: [
     {
       name: "Blissful Cm9",
@@ -242,7 +239,6 @@ const MIDI_BANKS: Record<PresetMidiCategory, MidiVariation[]> = {
     },
   ],
 
-  // CHORDS (CH): 4 variations of 4-chord progressions
   chords: [
     {
       name: "Future Chords",
@@ -310,7 +306,6 @@ const MIDI_BANKS: Record<PresetMidiCategory, MidiVariation[]> = {
     },
   ],
 
-  // KEYS & PLUCKS: 4 variations of chords + top-line melody
   keys: [
     {
       name: "Euphoric Top",
@@ -388,7 +383,6 @@ const MIDI_BANKS: Record<PresetMidiCategory, MidiVariation[]> = {
     },
   ],
 
-  // LEAD: 4 monophonic top-line melodies (no chords)
   lead: [
     {
       name: "Festival Anthem",
@@ -1062,7 +1056,6 @@ function LogicPianoRoll({
         darkMode ? "bg-[#111216] border-white/[0.08]" : "bg-slate-50 border-slate-200"
       }`}
     >
-      {/* DRAGGABLE TOP RESIZE BAR */}
       <div
         onMouseDown={handleStartPanelResize}
         title="Drag up or down to resize Piano Roll"
@@ -1071,7 +1064,6 @@ function LogicPianoRoll({
         <div className="w-12 h-1 rounded-full bg-zinc-600/60 group-hover:bg-blue-400 transition-colors" />
       </div>
 
-      {/* MIDI DRAG-OVER OVERLAY */}
       {isDragOverMidi && (
         <div className="absolute inset-0 z-40 bg-blue-600/20 backdrop-blur-[2px] border-2 border-dashed border-blue-400 flex items-center justify-center pointer-events-none">
           <div className="px-5 py-3 rounded-2xl bg-[#0d0e12]/95 border border-blue-400 text-blue-300 text-sm font-bold shadow-xl">
@@ -1081,7 +1073,6 @@ function LogicPianoRoll({
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-3 space-y-2">
-        {/* TOOLBAR */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1095,7 +1086,6 @@ function LogicPianoRoll({
               {isRollPlaying ? "■ Stop" : "▶ Play 8 Bars"}
             </button>
 
-            {/* FREE-TYPE BPM INPUT */}
             <div className="flex items-center gap-1.5 text-xs">
               <span className="opacity-50 font-mono text-[11px]">BPM</span>
               <input
@@ -1120,7 +1110,6 @@ function LogicPianoRoll({
               />
             </div>
 
-            {/* DEFAULT NOTE LENGTH */}
             <div className="flex items-center gap-1 text-xs">
               <span className="opacity-50 font-mono text-[11px] hidden sm:inline">NOTE</span>
               {[
@@ -1145,7 +1134,6 @@ function LogicPianoRoll({
               ))}
             </div>
 
-            {/* 4 PRESET-MATCHED MIDI VARIATIONS */}
             <div className="flex items-center gap-1 pl-1 flex-wrap">
               <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 font-bold">
                 {MIDI_CATEGORY_LABELS[activeMidiCategory]}
@@ -1181,7 +1169,6 @@ function LogicPianoRoll({
             </div>
           </div>
 
-          {/* RIGHT CONTROLS: AUTO-SCROLL, ZOOM, SIZE, MIDI IMPORT, CLEAR */}
           <div className="flex flex-wrap items-center gap-1.5">
             {importedMidiName && (
               <span className="text-[11px] font-mono text-blue-400 max-w-[140px] truncate mr-1">
@@ -1271,7 +1258,6 @@ function LogicPianoRoll({
           </div>
         </div>
 
-        {/* LOGIC PRO X STYLE CANVAS */}
         <div
           ref={scrollContainerRef}
           style={{ height: `${panelHeight}px` }}
@@ -1280,7 +1266,6 @@ function LogicPianoRoll({
           }`}
         >
           <div style={{ width: `${56 + gridWidth}px` }} className="relative">
-            {/* STICKY TOP BAR RULER (BARS 1–8) */}
             <div
               className={`sticky top-0 z-30 flex h-6 border-b ${
                 darkMode
@@ -1341,7 +1326,6 @@ function LogicPianoRoll({
               </div>
             </div>
 
-            {/* BODY: STICKY LEFT PIANO KEYS + INTERACTIVE NOTE GRID */}
             <div className="flex relative">
               <div className="sticky left-0 z-20 w-14 shrink-0 border-r border-white/10">
                 {ROLL_ROWS.map((row) => {
@@ -1605,14 +1589,17 @@ export default function ProdPresetsMarketplace() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
 
-  // Credits & Payments
+  // Credits & Subscription State
   const [credits, setCredits] = useState<number>(0);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string>("inactive");
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan | null>(null);
+  const [currentPeriodEnd, setCurrentPeriodEnd] = useState<string | null>(null);
   const [ownedIds, setOwnedIds] = useState<string[]>([]);
   const [accountOpen, setAccountOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("Card");
-  const [selectedBundleCredits, setSelectedBundleCredits] = useState<number>(100);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>("annual");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutBanner, setCheckoutBanner] = useState<"success" | "canceled" | null>(null);
   const [creditHistory, setCreditHistory] = useState<{ label: string; delta: number; date: string }[]>([]);
 
@@ -1657,6 +1644,7 @@ export default function ProdPresetsMarketplace() {
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   const showSynthDeck = activeTab !== "Home" || homeDeckVisible || pianoRollOpen;
+  const isSubscribed = subscriptionStatus === "active" || subscriptionStatus === "trialing";
 
   const ensureAudioBuses = useCallback(() => {
     if (!filterRef.current) {
@@ -1736,7 +1724,6 @@ export default function ProdPresetsMarketplace() {
     setCurrentStep(null);
   }, [stopPreviewAudio, stopSamplerAudio]);
 
-  // Apply category-matched default MIDI whenever activeAsset changes (unless user loaded/edited custom MIDI)
   useEffect(() => {
     const detectedCat = detectPresetMidiCategory(activeAsset);
     setActiveMidiCategory(detectedCat);
@@ -1823,7 +1810,6 @@ export default function ProdPresetsMarketplace() {
     }
   }, [activeAsset.id, activeAsset.bpm, importedMidiName]);
 
-  // Load single shared audio buffer into both Preview Player and Sampler
   useEffect(() => {
     let cancelled = false;
     setIsSampleReady(false);
@@ -1931,7 +1917,11 @@ export default function ProdPresetsMarketplace() {
   const loadUserWallet = useCallback(
     async (userId: string) => {
       const [{ data: profile }, { data: unlockRows }] = await Promise.all([
-        supabase.from("profiles").select("credits").eq("id", userId).single(),
+        supabase
+          .from("profiles")
+          .select("credits, subscription_status, subscription_plan, current_period_end")
+          .eq("id", userId)
+          .single(),
         supabase
           .from("unlocks")
           .select("asset_id, created_at")
@@ -1940,7 +1930,14 @@ export default function ProdPresetsMarketplace() {
       ]);
 
       if (profile) {
-        setCredits(profile.credits);
+        setCredits(profile.credits ?? 0);
+        setSubscriptionStatus(profile.subscription_status || "inactive");
+        setSubscriptionPlan(
+          profile.subscription_plan === "monthly" || profile.subscription_plan === "annual"
+            ? profile.subscription_plan
+            : null
+        );
+        setCurrentPeriodEnd(profile.current_period_end ?? null);
       }
       if (unlockRows) {
         setOwnedIds(unlockRows.map((row) => row.asset_id));
@@ -1979,6 +1976,9 @@ export default function ProdPresetsMarketplace() {
         loadUserWallet(nextUser.id);
       } else {
         setCredits(0);
+        setSubscriptionStatus("inactive");
+        setSubscriptionPlan(null);
+        setCurrentPeriodEnd(null);
         setOwnedIds([]);
         setCreditHistory([]);
       }
@@ -2282,7 +2282,6 @@ export default function ProdPresetsMarketplace() {
   const handleTogglePlay = async (asset: AudioAsset) => {
     const wasPlayingSameAsset = activeAsset.id === asset.id && isPlayingPreview;
 
-    // Hard-cut both Piano Roll and any active preview (~15ms) so audio never overlaps
     stopAllAudio();
     setHomeDeckVisible(true);
 
@@ -2381,7 +2380,7 @@ export default function ProdPresetsMarketplace() {
     await triggerFileDownload(asset, user.id);
   };
 
-  const handleCompletePayment = async () => {
+  const handleStartSubscription = async () => {
     if (!user) {
       setPaymentModalOpen(false);
       setAuthMode("signin");
@@ -2394,11 +2393,11 @@ export default function ProdPresetsMarketplace() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credits: selectedBundleCredits }),
+        body: JSON.stringify({ plan: selectedPlan }),
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || "Unable to start checkout");
+        alert(data.error || "Unable to start subscription checkout");
         setCheckoutLoading(false);
         return;
       }
@@ -2408,6 +2407,25 @@ export default function ProdPresetsMarketplace() {
     } catch {
       alert("Network error connecting to Stripe Checkout");
       setCheckoutLoading(false);
+    }
+  };
+
+  const handleOpenPortal = async () => {
+    setPortalLoading(true);
+    try {
+      const res = await fetch("/api/portal", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Unable to open billing portal");
+        setPortalLoading(false);
+        return;
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch {
+      alert("Network error connecting to Stripe Billing Portal");
+      setPortalLoading(false);
     }
   };
 
@@ -2796,17 +2814,21 @@ export default function ProdPresetsMarketplace() {
                     setAuthModalOpen(true);
                   }
                 }}
-                title="Top up credits"
+                title={isSubscribed ? "Membership & Credits" : "Join VirtualPresets Membership"}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition-all ${
                   darkMode
                     ? "bg-white/[0.04] border-white/[0.08] text-zinc-200 hover:border-blue-500/60"
                     : "bg-white border-slate-200 text-slate-800 hover:border-blue-500 shadow-2xs"
                 }`}
               >
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isSubscribed ? "bg-emerald-400" : "bg-blue-500 animate-pulse"
+                  }`}
+                />
                 <span className="font-mono tracking-tight">{credits} CREDITS</span>
                 <span className="px-1.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-bold">
-                  +
+                  {isSubscribed ? "PRO" : "+"}
                 </span>
               </button>
 
@@ -2853,7 +2875,7 @@ export default function ProdPresetsMarketplace() {
             >
               <span>
                 {checkoutBanner === "success"
-                  ? "✓ Payment confirmed! Your credits have been added to your wallet."
+                  ? "✓ Membership active! Your credits have been added to your wallet."
                   : "Checkout canceled — no charges were made."}
               </span>
               <button onClick={() => setCheckoutBanner(null)} className="opacity-70 hover:opacity-100">
@@ -2878,7 +2900,7 @@ export default function ProdPresetsMarketplace() {
                 <div className="relative z-10 max-w-2xl space-y-5">
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[11px] font-mono uppercase tracking-wider font-semibold">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                    Audition Live in Browser • Zero Subscriptions
+                    Audition Live in Browser • Plans from $7.50/mo
                   </div>
 
                   <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-[1.08]">
@@ -3683,7 +3705,7 @@ export default function ProdPresetsMarketplace() {
         </div>
       )}
 
-      {/* STRIPE CREDIT CHECKOUT MODAL */}
+      {/* STRIPE SUBSCRIPTION MEMBERSHIP MODAL */}
       {paymentModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div
@@ -3695,8 +3717,12 @@ export default function ProdPresetsMarketplace() {
           >
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold">Top Up VirtualPresets Credits</h3>
-                <p className="text-xs opacity-60">Instant delivery • Credits never expire</p>
+                <h3 className="text-lg font-bold">
+                  {isSubscribed ? "VirtualPresets Membership" : "Join VirtualPresets"}
+                </h3>
+                <p className="text-xs opacity-60">
+                  Cancel anytime • 100% royalty-free commercial license
+                </p>
               </div>
               <button
                 onClick={() => setPaymentModalOpen(false)}
@@ -3706,73 +3732,105 @@ export default function ProdPresetsMarketplace() {
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-2.5">
-              {[
-                { cr: 50, price: "$9.99", tag: "Starter" },
-                { cr: 100, price: "$17.99", tag: "Most Popular" },
-                { cr: 250, price: "$39.99", tag: "Studio Pro" },
-              ].map((tier) => {
-                const selected = selectedBundleCredits === tier.cr;
-                return (
+            {isSubscribed ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 space-y-1">
+                  <div className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 font-bold">
+                    ✓ Active {subscriptionPlan === "annual" ? "Annual" : "Monthly"} Member
+                  </div>
+                  <p className="text-xs opacity-80">
+                    Switch between Monthly and Annual plans, update your payment method, or cancel
+                    anytime in the Stripe Billing Portal.
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleOpenPortal}
+                  disabled={portalLoading}
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors uppercase"
+                >
+                  {portalLoading ? "Opening Stripe Portal..." : "Manage Subscription"}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
                   <button
-                    key={tier.cr}
-                    onClick={() => setSelectedBundleCredits(tier.cr)}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      selected
+                    onClick={() => setSelectedPlan("monthly")}
+                    className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                      selectedPlan === "monthly"
                         ? "border-blue-500 bg-blue-600/15 ring-1 ring-blue-500"
                         : darkMode
                         ? "border-white/[0.08] bg-zinc-950/60 hover:border-white/20"
                         : "border-slate-200 bg-slate-50 hover:border-slate-300"
                     }`}
                   >
-                    <div className="text-[10px] font-bold uppercase text-blue-400">{tier.tag}</div>
-                    <div className="text-base font-extrabold mt-0.5 uppercase">{tier.cr} CREDITS</div>
-                    <div className="text-xs opacity-75 font-medium">{tier.price}</div>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        Monthly
+                      </div>
+                      <div className="text-2xl font-extrabold mt-1">
+                        $9.99<span className="text-xs font-medium opacity-60">/mo</span>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-white/10 space-y-0.5">
+                      <div className="text-xs font-bold text-blue-400 uppercase">
+                        100 CREDITS / MO
+                      </div>
+                      <div className="text-[11px] opacity-60">50 downloads every month</div>
+                    </div>
                   </button>
-                );
-              })}
-            </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider opacity-60 block">
-                Supported via Stripe Checkout
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: "Card", label: "💳 Credit / Debit Card" },
-                  { id: "Apple Pay", label: " Apple Pay" },
-                  { id: "Google Pay", label: "G Pay / Link" },
-                  { id: "Klarna", label: "Split Pay / Klarna" },
-                ].map((method) => {
-                  const active = selectedPaymentMethod === method.id;
-                  return (
-                    <button
-                      key={method.id}
-                      onClick={() => setSelectedPaymentMethod(method.id)}
-                      className={`px-3 py-2.5 rounded-xl border text-xs font-semibold text-left transition-colors ${
-                        active
-                          ? "border-blue-600 bg-blue-600 text-white"
-                          : darkMode
-                          ? "border-white/[0.08] bg-zinc-950/60 text-zinc-300 hover:border-white/20"
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {method.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                  <button
+                    onClick={() => setSelectedPlan("annual")}
+                    className={`relative p-4 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                      selectedPlan === "annual"
+                        ? "border-blue-500 bg-blue-600/15 ring-1 ring-blue-500"
+                        : darkMode
+                        ? "border-white/[0.08] bg-zinc-950/60 hover:border-white/20"
+                        : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                    }`}
+                  >
+                    <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider">
+                      Save 25%
+                    </span>
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-blue-400">
+                        Annual
+                      </div>
+                      <div className="text-2xl font-extrabold mt-1">
+                        $89.99<span className="text-xs font-medium opacity-60">/yr</span>
+                      </div>
+                      <div className="text-[11px] text-emerald-400 font-medium">$7.50 / month</div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-white/10 space-y-0.5">
+                      <div className="text-xs font-bold text-blue-400 uppercase">
+                        1,200 CREDITS UPFRONT
+                      </div>
+                      <div className="text-[11px] opacity-60">600 downloads all year</div>
+                    </div>
+                  </button>
+                </div>
 
-            <button
-              onClick={handleCompletePayment}
-              disabled={checkoutLoading}
-              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors uppercase"
-            >
-              {checkoutLoading
-                ? "Redirecting to Stripe..."
-                : `Continue to Stripe • Add ${selectedBundleCredits} CREDITS`}
-            </button>
+                <ul className="space-y-1.5 text-xs opacity-75">
+                  <li>✓ Instant access to Serum, Analog Lab, Vital &amp; Omnisphere presets</li>
+                  <li>✓ Unused credits roll over while your membership is active</li>
+                  <li>✓ Switch plans or cancel anytime in 1 click</li>
+                </ul>
+
+                <button
+                  onClick={handleStartSubscription}
+                  disabled={checkoutLoading}
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-blue-600/25 transition-colors uppercase"
+                >
+                  {checkoutLoading
+                    ? "Redirecting to Stripe..."
+                    : selectedPlan === "annual"
+                    ? "Subscribe Annual • $89.99/yr"
+                    : "Subscribe Monthly • $9.99/mo"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -3793,7 +3851,11 @@ export default function ProdPresetsMarketplace() {
                   </div>
                   <div>
                     <h3 className="font-bold text-base truncate max-w-[230px]">{user.email}</h3>
-                    <p className="text-xs opacity-60">VirtualPresets Studio Wallet</p>
+                    <p className="text-xs opacity-60">
+                      {isSubscribed
+                        ? `${subscriptionPlan === "annual" ? "Annual" : "Monthly"} Member`
+                        : "Free Account"}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -3805,20 +3867,42 @@ export default function ProdPresetsMarketplace() {
               </div>
 
               <div className="p-4 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600 text-white space-y-2">
-                <div className="text-xs uppercase tracking-wider opacity-80 font-semibold">
-                  Available Balance
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider opacity-80 font-semibold">
+                    Available Balance
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-black/25 text-[10px] font-mono uppercase font-bold">
+                    {isSubscribed
+                      ? `ACTIVE • ${subscriptionPlan?.toUpperCase() || "PRO"}`
+                      : "NO PLAN"}
+                  </span>
                 </div>
                 <div className="text-3xl font-bold uppercase">{credits} CREDITS</div>
-                <div className="pt-2 flex gap-2">
-                  <button
-                    onClick={() => {
-                      setAccountOpen(false);
-                      setPaymentModalOpen(true);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 transition-colors uppercase"
-                  >
-                    + Buy More CREDITS
-                  </button>
+                {isSubscribed && currentPeriodEnd && (
+                  <div className="text-[11px] opacity-85">
+                    Renews {new Date(currentPeriodEnd).toLocaleDateString()}
+                  </div>
+                )}
+                <div className="pt-2 flex flex-wrap gap-2">
+                  {isSubscribed ? (
+                    <button
+                      onClick={handleOpenPortal}
+                      disabled={portalLoading}
+                      className="px-3 py-1.5 rounded-lg bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 disabled:opacity-50 transition-colors uppercase"
+                    >
+                      {portalLoading ? "Opening..." : "Manage Subscription"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setAccountOpen(false);
+                        setPaymentModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-white text-blue-700 text-xs font-bold hover:bg-blue-50 transition-colors uppercase"
+                    >
+                      + Join Membership
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setAccountOpen(false);
