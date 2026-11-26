@@ -14,6 +14,26 @@ const CREDITS_BY_PRICE: Record<string, { credits: number; plan: "monthly" | "ann
   [process.env.STRIPE_PRICE_ANNUAL || ""]: { credits: 1200, plan: "annual" },
 };
 
+type FlexibleLineItem = {
+  price?: { id?: string };
+  pricing?: { price_details?: { price?: string } };
+};
+
+type FlexibleInvoice = Stripe.Invoice & {
+  parent?: {
+    subscription_details?: {
+      subscription?: string | { id?: string };
+    };
+  };
+};
+
+type FlexibleSubscription = Stripe.Subscription & {
+  current_period_end?: number;
+  items?: {
+    data?: Array<{ current_period_end?: number }>;
+  };
+};
+
 export async function POST(req: Request) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
@@ -32,27 +52,28 @@ export async function POST(req: Request) {
 
   try {
     if (event.type === "invoice.paid") {
-      const invoice = event.data.object as Stripe.Invoice;
-      const lineItem = invoice.lines.data[0];
-      const priceId =
-        (lineItem?.pricing?.price_details?.price as string | undefined) ||
-        (lineItem as unknown as { price?: { id?: string } })?.price?.id;
+      const invoice = event.data.object as FlexibleInvoice;
+      const lineItem = invoice.lines.data[0] as unknown as FlexibleLineItem | undefined;
+      const priceId = lineItem?.pricing?.price_details?.price || lineItem?.price?.id;
 
       const grantInfo = priceId ? CREDITS_BY_PRICE[priceId] : undefined;
       const customerId =
         typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id || null;
 
-      const subRef =
-        (invoice.parent?.subscription_details?.subscription as string | undefined) ||
-        (invoice as unknown as { subscription?: string }).subscription;
+      const parentSub = invoice.parent?.subscription_details?.subscription;
+      const rawSub =
+        (typeof parentSub === "string" ? parentSub : parentSub?.id) ||
+        (typeof invoice.subscription === "string"
+          ? invoice.subscription
+          : invoice.subscription?.id);
 
       let userId: string | undefined;
       let periodEndIso: string | null = null;
 
-      if (subRef) {
-        const sub = await stripe.subscriptions.retrieve(subRef);
+      if (rawSub) {
+        const sub = (await stripe.subscriptions.retrieve(rawSub)) as FlexibleSubscription;
         userId = sub.metadata?.user_id;
-        const periodEndSec = sub.items.data[0]?.current_period_end;
+        const periodEndSec = sub.items?.data?.[0]?.current_period_end ?? sub.current_period_end;
         if (periodEndSec) {
           periodEndIso = new Date(periodEndSec * 1000).toISOString();
         }
@@ -78,9 +99,9 @@ export async function POST(req: Request) {
       event.type === "customer.subscription.updated" ||
       event.type === "customer.subscription.deleted"
     ) {
-      const sub = event.data.object as Stripe.Subscription;
+      const sub = event.data.object as FlexibleSubscription;
       const userId = sub.metadata?.user_id;
-      const periodEndSec = sub.items.data[0]?.current_period_end;
+      const periodEndSec = sub.items?.data?.[0]?.current_period_end ?? sub.current_period_end;
 
       if (userId) {
         await supabaseAdmin
